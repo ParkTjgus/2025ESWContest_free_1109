@@ -13,6 +13,7 @@
     "expo-status-bar": "~2.2.3",
     "react": "19.0.0",
     "react-native": "^0.79.5",
+    "react-native-ble-manager": "^12.1.5",
     "react-native-cli": "^2.0.1",
     "zustand": "^5.0.7"
   },
