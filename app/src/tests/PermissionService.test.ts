@@ -1,5 +1,3 @@
-import { describe, expect, test } from "@jest/globals";
-
 import { PermissionsAndroid } from "react-native";
 import { permissionService } from "../services/PermissionService"; // 실제 파일 경로에 맞게 수정하세요.
 
