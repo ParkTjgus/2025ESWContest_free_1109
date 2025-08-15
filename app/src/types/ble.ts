@@ -16,6 +16,11 @@ export interface BluetoothState {
   startScan: () => void;
   connectToDevice: (peripheral: Peripheral) => Promise<void>;
   disconnectDevice: () => void;
+
+  // 내부 상태 변경 함수
+  _addDiscoveredDevice: (device: Peripheral) => void;
+  _handleScanStop: () => void;
+  _handleDisconnection: (event: BleDisconnectPeripheralEvent) => void;
 }
 
 export type BluetoothServiceEvents = {
