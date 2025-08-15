@@ -44,14 +44,22 @@ export const useBleStore = create<BluetoothState>((set, get) => ({
   },
 
   startScan: async () => {
+    // 👇 사용자님 의견대로, 스캔 시작 시 두 권한을 모두 확인합니다.
     const hasScanPermission = await permissionService.requestScanPermission();
-    if (!hasScanPermission) {
-      set({ status: "error", error: "블루투스 스캔 권한이 필요합니다." });
+    const hasConnectPermission =
+      await permissionService.requestConnectPermission();
+
+    if (!hasScanPermission || !hasConnectPermission) {
+      set({
+        status: "error",
+        error: "블루투스 스캔 및 연결 권한이 필요합니다.",
+      });
       return;
     }
 
     set({ devices: [], status: "scanning", error: null });
     try {
+      // 이제 이 함수는 필요한 모든 권한을 가진 상태에서 호출됩니다.
       await bluetoothService.startScan();
     } catch (e: any) {
       set({ status: "error", error: e.message });
@@ -59,13 +67,8 @@ export const useBleStore = create<BluetoothState>((set, get) => ({
   },
 
   connectToDevice: async (peripheral: Peripheral) => {
-    const hasConnectPermission =
-      await permissionService.requestConnectPermission();
-    if (!hasConnectPermission) {
-      set({ status: "error", error: "블루투스 연결 권한이 필요합니다." });
-      return;
-    }
-
+    // 👇 이제 여기서는 권한을 다시 요청할 필요가 없습니다.
+    // 스캔 과정에서 이미 권한을 받았기 때문입니다.
     set({ status: "connecting" });
     try {
       await bluetoothService.connect(peripheral);
