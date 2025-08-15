@@ -1,31 +1,25 @@
-import { PermissionsAndroid, Platform } from "react-native";
+import { PermissionsAndroid } from "react-native";
 
 class PermissionService {
-  public async requestBluetoothPermissions(): Promise<boolean> {
-    if (Platform.OS === "ios") {
-      // iOS는 별도의 스캔/연결 권한 요청이 필요 없음 (Info.plist로 처리)
-      return true;
-    }
+  /**
+   * 블루투스 스캔에 필요한 권한을 요청
+   */
+  public async requestScanPermission(): Promise<boolean> {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN
+    );
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  }
 
-    // Android 전용 로직
-    const apiLevel = parseInt(Platform.Version.toString(), 10);
-    if (apiLevel < 31) {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-      );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
-    } else {
-      const result = await PermissionsAndroid.requestMultiple([
-        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-      ]);
-      return (
-        result["android.permission.BLUETOOTH_SCAN"] === "granted" &&
-        result["android.permission.BLUETOOTH_CONNECT"] === "granted"
-      );
-    }
+  /**
+   * 블루투스 연결에 필요한 권한을 요청
+   */
+  public async requestConnectPermission(): Promise<boolean> {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT
+    );
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
   }
 }
 
-// 싱글턴(Singleton) 인스턴스로 export
 export const permissionService = new PermissionService();
