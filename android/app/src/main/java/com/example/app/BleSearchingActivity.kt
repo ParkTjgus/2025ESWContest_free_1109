@@ -2,14 +2,8 @@ package com.example.app
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothManager
-import android.bluetooth.le.BluetoothLeScanner
-import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanResult
-import android.bluetooth.le.ScanFilter
-import android.bluetooth.le.ScanSettings
+import android.bluetooth.*
+import android.bluetooth.le.*
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -22,13 +16,10 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 
-@SuppressLint("MissingPermission") // 권한 확인 로직이 있으므로 Lint 경고 무시
+@SuppressLint("MissingPermission")
 class BleSearchingActivity : AppCompatActivity() {
 
-    //region 변수 선언
     private var isScanning = false
     private val scanResults = mutableListOf<BluetoothDevice>()
     private lateinit var listAdapter: ArrayAdapter<String>
@@ -36,19 +27,21 @@ class BleSearchingActivity : AppCompatActivity() {
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager).adapter
     }
-
     private val bleScanner: BluetoothLeScanner? by lazy {
         bluetoothAdapter?.bluetoothLeScanner
     }
+
+    private var bluetoothGatt: BluetoothGatt? = null
+
+    private lateinit var scanButton: Button
+    private lateinit var disconnectButton: Button
 
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
     } else {
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
-    //endregion
 
-    //region ActivityResultLaunchers
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             if (permissions.entries.any { !it.value }) {
@@ -62,18 +55,74 @@ class BleSearchingActivity : AppCompatActivity() {
                 Toast.makeText(this, "Bluetooth must be enabled to scan.", Toast.LENGTH_SHORT).show()
             }
         }
-    //endregion
 
-    //region 생명주기 콜백
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult?) {
+            result?.device?.let { device ->
+                // 특정 MAC 주소만 처리
+                if (device.address == "54:90:AC:A8:D5:3C" && !scanResults.contains(device)) {
+                    scanResults.add(device)
+                    val deviceInfo = "${device.name ?: "Unknown"} (${device.address})"
+                    listAdapter.add(deviceInfo)
+                    listAdapter.notifyDataSetChanged()
+
+                    // 스캔 중지하고 바로 연결
+                    stopBleScan()
+                    connectToDevice(device)
+                }
+            }
+        }
+
+        override fun onScanFailed(errorCode: Int) {
+            Log.e("BleScan", "Scan failed with error code: $errorCode")
+        }
+    }
+
+    private val gattCallback = object : BluetoothGattCallback() {
+        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            runOnUiThread {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    when (newState) {
+                        BluetoothProfile.STATE_CONNECTED -> {
+                            Log.d("BLE", "Connected to GATT server")
+                            gatt.discoverServices()
+                            disconnectButton.isEnabled = true
+                            scanButton.isEnabled = false
+                        }
+                        BluetoothProfile.STATE_DISCONNECTED -> {
+                            Log.d("BLE", "Disconnected from GATT server")
+                            disconnectButton.isEnabled = false
+                            scanButton.isEnabled = true
+                        }
+                    }
+                } else {
+                    Log.e("BLE", "Connection failed with status $status")
+                    disconnectButton.isEnabled = false
+                    scanButton.isEnabled = true
+                }
+            }
+        }
+
+        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.d("BLE", "Services discovered: ${gatt.services.size}")
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_ble_searching)
-        setupWindowInsets()
 
-        val scanButton: Button = findViewById(R.id.scan_button)
-        scanButton.setOnClickListener {
-            toggleScan()
+        scanButton = findViewById(R.id.scan_button)
+        disconnectButton = findViewById<Button>(R.id.disconnect_button).apply {
+            isEnabled = false
+            setOnClickListener {
+                bluetoothGatt?.disconnect()
+            }
         }
+
+        scanButton.setOnClickListener { toggleScan() }
 
         val scanResultsListView: ListView = findViewById(R.id.scan_results_list)
         listAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf())
@@ -89,49 +138,22 @@ class BleSearchingActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (isScanning) {
-            stopBleScan()
-        }
-    }
-    //endregion
-
-    //region 스캔 로직
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult?) {
-            result?.device?.let { device ->
-                if (!scanResults.contains(device) && device.name != null) {
-                    scanResults.add(device)
-                    val deviceInfo = "${device.name} (${device.address})"
-                    listAdapter.add(deviceInfo)
-                    listAdapter.notifyDataSetChanged()
-                }
-            }
-        }
-
-        override fun onScanFailed(errorCode: Int) {
-            Log.e("BleScan", "Scan failed with error code: $errorCode")
-        }
+        if (isScanning) stopBleScan()
+        bluetoothGatt?.close()
+        bluetoothGatt = null
     }
 
     private fun toggleScan() {
-        if (isScanning) {
-            stopBleScan()
-        } else {
-            startBleScan()
-        }
+        if (isScanning) stopBleScan() else startBleScan()
     }
-
 
     private fun startBleScan() {
         if (!hasPermissions(requiredPermissions)) {
-            Log.d("BleScan", "Permissions not granted yet.")
             requestPermissionLauncher.launch(requiredPermissions)
             return
         }
-
         if (bluetoothAdapter?.isEnabled == false) {
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            enableBluetoothLauncher.launch(enableBtIntent)
+            enableBluetoothLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
             return
         }
 
@@ -139,41 +161,38 @@ class BleSearchingActivity : AppCompatActivity() {
         listAdapter.clear()
         listAdapter.notifyDataSetChanged()
 
-        // ScanSettings 기본 설정 (빠른 스캔)
+        // MAC 주소 필터
+        val filter = ScanFilter.Builder()
+            .setDeviceAddress("54:90:AC:A8:D5:3C")
+            .build()
+        val filters = listOf(filter)
+
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
-        // 모든 BLE 기기 스캔 → 필터는 빈 리스트 사용
-        bleScanner?.startScan(emptyList<ScanFilter>(), settings, scanCallback)
-
+        bleScanner?.startScan(filters, settings, scanCallback)
         isScanning = true
-        findViewById<Button>(R.id.scan_button).text = "Stop Scan"
-        Log.d("BleScan", "BLE scan started.")
+        scanButton.text = "Stop Scan"
+        Log.d("BleScan", "BLE scan started for 54:90:AC:A8:D5:3C")
     }
 
     private fun stopBleScan() {
         bleScanner?.stopScan(scanCallback)
         isScanning = false
-        findViewById<Button>(R.id.scan_button).text = "Start Scan"
+        scanButton.text = "Start Scan"
         Log.d("BleScan", "BLE scan stopped.")
     }
-    //endregion
 
-    //region 유틸리티 함수
+    private fun connectToDevice(device: BluetoothDevice) {
+        bluetoothGatt = device.connectGatt(this, false, gattCallback)
+        Toast.makeText(this, "Connecting to ${device.name ?: "Unknown"}", Toast.LENGTH_SHORT).show()
+        Log.d("BLE", "Connecting to ${device.address}")
+    }
+
     private fun hasPermissions(permissions: Array<String>): Boolean {
         return permissions.all {
             ActivityCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
     }
-
-    private fun setupWindowInsets() {
-        val mainView = findViewById<android.view.View>(R.id.main)
-        ViewCompat.setOnApplyWindowInsetsListener(mainView) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
-            insets
-        }
-    }
-    //endregion
 }
