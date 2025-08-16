@@ -1,56 +1,45 @@
 package com.example.app
 
-import android.annotation.SuppressLint
-import android.bluetooth.*
-import android.bluetooth.le.*
-import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
+import android.content.*
 import android.os.Bundle
+import android.os.IBinder
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 
 class BleWaitingActivity : AppCompatActivity() {
 
     private val targetMac = "54:90:AC:A8:D5:3C"
-    private var bluetoothGatt: BluetoothGatt? = null
-    private val bluetoothAdapter by lazy {
-        (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
-    }
-    private val bleScanner by lazy { bluetoothAdapter.bluetoothLeScanner }
+    private var bleService: BleService? = null
+    private var isBound = false
 
-    private val REQUEST_BLUETOOTH_PERMISSIONS = 1
-
-    private fun ensureBlePermissions() {
-        val permissions = mutableListOf<String>()
-
-        if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
-        }
-        if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as BleService.LocalBinder
+            bleService = binder.getService()
+            isBound = true
+            Log.d("BleWaiting", "Service Bound. Starting scan.")
+            bleService?.startBleScan(targetMac)
         }
 
-        if (permissions.isNotEmpty()) {
-            requestPermissions(permissions.toTypedArray(), REQUEST_BLUETOOTH_PERMISSIONS)
+        override fun onServiceDisconnected(name: ComponentName?) {
+            isBound = false
+            bleService = null
         }
     }
 
-
-    private val gattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
-                runOnUiThread {
-                    Log.d("BleWaiting", "✅ GATT Connected!")
-
-                    // 연결 성공 시 다음 화면으로 이동
-                    val intent = Intent(this@BleWaitingActivity, BleConnectedActivity::class.java)
-                    startActivity(intent)
+    private val gattUpdateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                BleService.ACTION_GATT_CONNECTED -> {
+                    Log.d("BleWaiting", "GATT Connected. Moving to next activity.")
+                    val nextIntent = Intent(this@BleWaitingActivity, BleConnectedActivity::class.java)
+                    startActivity(nextIntent)
                     finish()
                 }
-            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                runOnUiThread {
-                    Log.d("BleWaiting", "❌ GATT Disconnected")
+                BleService.ACTION_GATT_DISCONNECTED -> {
+                    Log.d("BleWaiting", "GATT Disconnected.")
+                    // 연결 끊김에 대한 처리 (예: 사용자에게 알림)
                 }
             }
         }
@@ -60,47 +49,34 @@ class BleWaitingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_ble_waiting)
 
-        ensureBlePermissions() // ← 권한 먼저 요청
-        startBleScan()
-    }
+        // ⭐ 중요: 서비스 시작 (bindService()보다 먼저 호출)
+        // 이 호출이 서비스를 계속 실행되게 만듭니다.
+        val serviceIntent = Intent(this, BleService::class.java)
+        startService(serviceIntent)
 
+        // 서비스 바인딩
+        bindService(serviceIntent, serviceConnection, BIND_AUTO_CREATE)
 
-    @SuppressLint("MissingPermission")
-    private fun startBleScan() {
-        val filter = ScanFilter.Builder().setDeviceAddress(targetMac).build()
-        val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .build()
-
-        bleScanner.startScan(listOf(filter), settings, scanCallback)
-    }
-
-    private val scanCallback = object : ScanCallback() {
-        @SuppressLint("MissingPermission")
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            if (result.device.address == targetMac) {
-                Log.d("BleWaiting", "🎯 Found target device: ${result.device.address}")
-                bleScanner.stopScan(this)
-                bluetoothGatt = result.device.connectGatt(this@BleWaitingActivity, false, gattCallback)
-            }
+        // 브로드캐스트 리시버 등록
+        val filter = IntentFilter().apply {
+            addAction(BleService.ACTION_GATT_CONNECTED)
+            addAction(BleService.ACTION_GATT_DISCONNECTED)
         }
+
+        ContextCompat.registerReceiver(
+            this,
+            gattUpdateReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
-    @SuppressLint("MissingPermission")
     override fun onDestroy() {
         super.onDestroy()
-
-        bluetoothGatt?.let { gatt ->
-            try {
-                gatt.disconnect()
-                gatt.close()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+        // 리시버와 서비스 바인딩 해제
+        unregisterReceiver(gattUpdateReceiver)
+        if (isBound) {
+            unbindService(serviceConnection)
         }
-        bluetoothGatt = null
     }
-
-
-
 }
