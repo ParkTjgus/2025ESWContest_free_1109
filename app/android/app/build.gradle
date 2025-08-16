@@ -87,6 +87,7 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
+
     namespace 'com.parktjgus.app'
     defaultConfig {
         applicationId 'com.parktjgus.app'

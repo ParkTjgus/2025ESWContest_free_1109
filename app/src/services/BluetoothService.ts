@@ -1,19 +1,18 @@
+import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import BleManager, {
   BleDisconnectPeripheralEvent,
   Peripheral,
 } from "react-native-ble-manager";
-import { NativeEventEmitter, NativeModules, Platform } from "react-native";
-import { BluetoothServiceEvents } from "../types/ble";
+import { useBleStore } from "../stores/useBleStore";
+import { permissionService } from "../services/PermissionService";
 
 const BleManagerModule = NativeModules.BleManager;
-// NativeEventEmitter를 사용하여 서비스의 이벤트 시스템을 구현
-const serviceEventEmitter = new NativeEventEmitter(BleManagerModule);
+const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
 
 class BluetoothService {
   private static instance: BluetoothService;
   private isInitialized = false;
 
-  // 싱글톤 패턴: 생성자를 private으로 막고 getInstance로만 접근 허용
   private constructor() {}
 
   public static getInstance(): BluetoothService {
@@ -23,87 +22,165 @@ class BluetoothService {
     return BluetoothService.instance;
   }
 
-  /**
-   * BleManager를 시작하고 네이티브 이벤트 리스너를 등록합니다.
-   * 앱 실행 시 한 번만 호출되어야 합니다.
-   */
-  public initialize(): void {
+  public async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
-    BleManager.start({ showAlert: false }).then(() => {
-      console.log("BluetoothService: BleManager initialized");
-      this.registerNativeEventListeners();
-      this.isInitialized = true;
-    });
+    await BleManager.start({ showAlert: false });
+    console.log("BluetoothService: BleManager initialized");
+
+    this.registerNativeEventListeners();
+    this.isInitialized = true;
   }
 
-  /**
-   * 네이티브 리스너들을 정리합니다.
-   */
   public cleanup(): void {
     console.log("BluetoothService: Cleaning up listeners");
-    serviceEventEmitter.removeAllListeners("BleManagerDiscoverPeripheral");
-    serviceEventEmitter.removeAllListeners("BleManagerStopScan");
-    serviceEventEmitter.removeAllListeners("BleManagerDisconnectPeripheral");
+    bleManagerEmitter.removeAllListeners("BleManagerDiscoverPeripheral");
+    bleManagerEmitter.removeAllListeners("BleManagerStopScan");
+    bleManagerEmitter.removeAllListeners("BleManagerDisconnectPeripheral");
+    bleManagerEmitter.removeAllListeners("BleManagerDidUpdateState");
   }
 
-  /**
-   * BleManager가 발생시키는 네이티브 이벤트를 수신하고,
-   * 우리가 정의한 더 단순한 커스텀 이벤트로 변환하여 외부에 알립니다.
-   */
   private registerNativeEventListeners(): void {
-    // 기기 발견 이벤트
-    serviceEventEmitter.addListener(
+    bleManagerEmitter.addListener(
       "BleManagerDiscoverPeripheral",
       (peripheral: Peripheral) => {
-        if (peripheral.name) {
-          serviceEventEmitter.emit("discover", peripheral);
-        }
+        console.log("🔵 Discovered peripheral:", {
+          id: peripheral.id,
+          name: peripheral.name || "Unknown",
+          rssi: peripheral.rssi,
+          advertising: peripheral.advertising,
+        });
+        useBleStore.getState()._addDiscoveredDevice(peripheral);
       }
     );
 
-    // 스캔 중지 이벤트
-    serviceEventEmitter.addListener("BleManagerStopScan", () => {
-      serviceEventEmitter.emit("stopScan");
+    bleManagerEmitter.addListener("BleManagerStopScan", () => {
+      console.log("🔴 Native: Scan stopped event received.");
+      useBleStore.getState()._handleScanStop();
     });
 
-    // 연결 끊김 이벤트
-    serviceEventEmitter.addListener(
+    bleManagerEmitter.addListener(
       "BleManagerDisconnectPeripheral",
       (event: BleDisconnectPeripheralEvent) => {
-        serviceEventEmitter.emit("disconnect", event);
+        console.log("❌ Device disconnected:", event);
+        useBleStore.getState()._handleDisconnection(event);
       }
     );
   }
 
-  /**
-   * 주변 기기 스캔을 시작합니다.
-   */
-  public async startScan(): Promise<void> {
-    const isBluetoothOn = await BleManager.checkState();
-    if (isBluetoothOn !== "on") {
-      // 이 부분은 스토어에서 처리하므로 여기선 에러를 던지거나 반환할 수 있습니다.
-      throw new Error("블루투스를 켜주세요.");
+  // PermissionService를 사용한 권한 확인
+  private async requestPermissions(): Promise<boolean> {
+    if (Platform.OS === "android") {
+      try {
+        console.log("Requesting BLUETOOTH_SCAN permission...");
+        const scanGranted = await permissionService.requestScanPermission();
+        console.log(
+          "BLUETOOTH_SCAN permission:",
+          scanGranted ? "GRANTED" : "DENIED"
+        );
+
+        console.log("Requesting BLUETOOTH_CONNECT permission...");
+        const connectGranted =
+          await permissionService.requestConnectPermission();
+        console.log(
+          "BLUETOOTH_CONNECT permission:",
+          connectGranted ? "GRANTED" : "DENIED"
+        );
+
+        // 만약 PermissionService에 requestLocationPermission()이 있다면 사용
+        const locationGranted =
+          await permissionService.requestLocationPermission();
+        console.log(
+          "ACCESS_FINE_LOCATION permission:",
+          locationGranted ? "GRANTED" : "DENIED"
+        );
+
+        const allGranted = scanGranted && connectGranted; // && locationGranted;
+        console.log("All Bluetooth permissions granted:", allGranted);
+
+        if (!allGranted) {
+          console.error("블루투스 권한이 거부되었습니다.");
+          console.error(
+            "설정 > 앱 > [앱이름] > 권한에서 블루투스 및 위치 권한을 허용해주세요."
+          );
+        }
+
+        return allGranted;
+      } catch (error) {
+        console.error("Error requesting permissions:", error);
+        return false;
+      }
     }
-
-    // 이미 본딩된 기기 목록을 먼저 'discover' 이벤트로 전달
-    const bondedDevices = await BleManager.getBondedPeripherals();
-    bondedDevices.forEach((device) => {
-      serviceEventEmitter.emit("discover", device);
-    });
-
-    await BleManager.scan([], 5, true);
+    return true; // iOS는 true 반환
   }
 
-  /**
-   * 특정 기기에 연결하고, 필요 시 본딩을 생성합니다.
-   */
+  public async startScan(): Promise<void> {
+    try {
+      // 1. 권한 확인
+      console.log("StartScan: registering listeners before scan...");
+      this.registerNativeEventListeners(); // 스캔 전에 강제 등록
+
+      const hasPermissions = await this.requestPermissions();
+      if (!hasPermissions) {
+        throw new Error("블루투스 스캔에 필요한 권한이 없습니다.");
+      }
+
+      // 2. 블루투스 상태 확인
+      const isBluetoothOn = await BleManager.checkState();
+      if (isBluetoothOn !== "on") {
+        throw new Error("블루투스를 켜주세요.");
+      }
+
+      // 3. 이전 스캔이 진행 중이면 중지
+      try {
+        await BleManager.stopScan();
+      } catch (error) {
+        // 스캔이 진행 중이 아니면 에러가 발생할 수 있으므로 무시
+        console.log("No active scan to stop");
+      }
+
+      // 4. 기존 디바이스 목록 초기화 (bonded 기기들만 남기기 위해)
+      // useBleStore.getState().devices = []; // 이 라인을 제거하거나 주석처리
+
+      // 5. 본딩된 디바이스들을 먼저 추가
+      const bondedDevices = await BleManager.getBondedPeripherals();
+      console.log("Bonded devices:", bondedDevices);
+
+      const devicesWithBondedFlag = bondedDevices.map((device) => ({
+        ...device,
+        bonded: true,
+      }));
+
+      devicesWithBondedFlag.forEach((device) => {
+        useBleStore.getState()._addDiscoveredDevice(device);
+      });
+
+      // 6. 새로운 스캔 시작 - 파라미터 단순화
+      console.log("Starting BLE scan...");
+
+      bleManagerEmitter.addListener(
+        "BleManagerDiscoverPeripheral",
+        (peripheral) => {
+          console.log("🔵 Discovered peripheral:", peripheral);
+        }
+      );
+      await BleManager.scan(
+        [], // 서비스 UUID 필터 (빈 배열 = 모든 디바이스)
+        30, // 스캔 시간
+        false // 중복 허용 -> false로 변경
+      );
+
+      console.log("BLE scan started successfully");
+    } catch (error) {
+      console.error("Error starting scan:", error);
+      throw error;
+    }
+  }
+
   public async connect(peripheral: Peripheral): Promise<void> {
     await BleManager.connect(peripheral.id);
     if (Platform.OS === "android") {
-      // 1. 전체 본딩 목록을 가져옵니다.
       const bondedList = await BleManager.getBondedPeripherals();
-      // 2. 목록에 현재 기기가 있는지 확인합니다.
       const isAlreadyBonded = bondedList.some(
         (bondedDevice) => bondedDevice.id === peripheral.id
       );
@@ -114,23 +191,18 @@ class BluetoothService {
     }
   }
 
-  /**
-   * 기기와의 연결을 해제합니다.
-   */
   public async disconnect(peripheralId: string): Promise<void> {
     await BleManager.disconnect(peripheralId);
   }
 
-  /**
-   * 커스텀 이벤트를 구독(listen)하기 위한 메서드
-   */
-  public addListener<E extends keyof BluetoothServiceEvents>(
-    event: E,
-    listener: (data: BluetoothServiceEvents[E]) => void
-  ) {
-    return serviceEventEmitter.addListener(event, listener);
+  // 디버깅을 위한 메서드 추가
+  public async getConnectedPeripherals(): Promise<Peripheral[]> {
+    return await BleManager.getConnectedPeripherals([]);
+  }
+
+  public async isScanning(): Promise<boolean> {
+    return await BleManager.isScanning();
   }
 }
 
-// 싱글턴 인스턴스를 export
 export const bluetoothService = BluetoothService.getInstance();

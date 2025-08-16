@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -9,30 +9,40 @@ import {
   ActivityIndicator,
   SafeAreaView,
 } from "react-native";
-import { useBleStore } from "../stores/useBleStore";
+import { useBleStore } from "../stores/useBleStore"; // 스토어 경로는 실제 프로젝트에 맞게 수정하세요.
 import { Peripheral } from "react-native-ble-manager";
 
 const BluetoothScreen = () => {
-  // 1. 스토어에서 상태를 구독합니다.
-  //    렌더링에 필요한 상태들만 선택(select)하여 불필요한 리렌더링을 방지합니다.
+  // 스토어에서 렌더링에 필요한 상태들을 구독합니다.
   const status = useBleStore((s) => s.status);
   const devices = useBleStore((s) => s.devices);
   const connectedDevice = useBleStore((s) => s.connectedDevice);
   const error = useBleStore((s) => s.error);
 
-  // 2. 스토어의 액션 함수들을 가져옵니다.
-  //    액션 함수는 렌더링마다 새로 가져올 필요 없으므로 getState()를 사용합니다.
+  // 스토어의 액션 함수들을 가져옵니다.
   const { startScan, connectToDevice, disconnectDevice } =
     useBleStore.getState();
 
-  // 목록의 각 항목을 렌더링하는 함수
-  const renderItem = ({ item }: { item: Peripheral }) => (
+  // FlatList의 각 항목을 렌더링하는 함수
+  const renderItem = ({
+    item,
+  }: {
+    item: Peripheral & { bonded?: boolean };
+  }) => (
+    // 'bonded' 속성을 확인하여 스타일을 다르게 적용합니다.
     <TouchableOpacity
-      style={styles.deviceItem}
+      style={[styles.deviceItem, item.bonded && styles.bondedDeviceItem]}
       onPress={() => connectToDevice(item)}
+      disabled={status === "connecting"}
     >
-      <Text style={styles.deviceName}>{item.name || "Unknown Device"}</Text>
+      <Text style={styles.deviceName}>
+        {item.name || "Unknown Device"}
+        {/* 본딩된 기기 옆에 아이콘을 표시하여 구분합니다. */}
+        {item.bonded && " 👑"}
+      </Text>
       <Text style={styles.deviceId}>{item.id}</Text>
+      {/* RSSI 값도 표시 */}
+      <Text style={styles.deviceRssi}>RSSI: {item.rssi}</Text>
     </TouchableOpacity>
   );
 
@@ -42,7 +52,7 @@ const BluetoothScreen = () => {
       case "scanning":
         return "주변 기기를 찾고 있습니다...";
       case "connecting":
-        return `기기에 연결 중입니다...`;
+        return "기기에 연결 중입니다...";
       case "connected":
         return `✅ ${
           connectedDevice?.name || connectedDevice?.id
@@ -64,6 +74,13 @@ const BluetoothScreen = () => {
         )}
       </View>
 
+      {/* --- 디버깅 정보 --- */}
+      <View style={styles.debugInfo}>
+        <Text style={styles.debugText}>
+          발견된 기기: {devices.length}개 | 상태: {status}
+        </Text>
+      </View>
+
       {/* --- 중앙 액션 버튼 영역 --- */}
       <View style={styles.actionZone}>
         {connectedDevice ? (
@@ -76,7 +93,7 @@ const BluetoothScreen = () => {
           <Button
             title="기기 스캔"
             onPress={startScan}
-            disabled={status === "scanning"}
+            disabled={status === "scanning" || status === "connecting"}
           />
         )}
       </View>
@@ -115,6 +132,16 @@ const styles = StyleSheet.create({
     marginRight: 10,
     color: "#333",
   },
+  debugInfo: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: "#E8F4FD",
+  },
+  debugText: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+  },
   actionZone: {
     paddingHorizontal: 20,
     marginBottom: 20,
@@ -134,6 +161,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 1.41,
   },
+  // 본딩된 기기를 위한 추가 스타일
+  bondedDeviceItem: {
+    backgroundColor: "#E3F2FD", // 하늘색 배경
+    borderColor: "#007BFF",
+    borderWidth: 1,
+  },
   deviceName: {
     fontSize: 16,
     fontWeight: "bold",
@@ -142,6 +175,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "gray",
     marginTop: 4,
+  },
+  deviceRssi: {
+    fontSize: 10,
+    color: "#999",
+    marginTop: 2,
   },
   emptyText: {
     textAlign: "center",

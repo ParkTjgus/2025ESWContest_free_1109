@@ -20,6 +20,14 @@ class PermissionService {
     );
     return granted === PermissionsAndroid.RESULTS.GRANTED;
   }
+
+  // PermissionService에 추가할 메서드
+  public async requestLocationPermission(): Promise<boolean> {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+    );
+    return granted === PermissionsAndroid.RESULTS.GRANTED;
+  }
 }
 
 export const permissionService = new PermissionService();
