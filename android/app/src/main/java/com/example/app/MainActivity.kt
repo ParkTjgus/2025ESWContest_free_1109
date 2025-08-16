@@ -25,7 +25,7 @@ class MainActivity : AppCompatActivity() {
         // 2. 버튼에 클릭 리스너를 설정합니다.
         bleSearchButton.setOnClickListener {
             // 3. BleSearchingActivity로 이동하기 위한 "의도(Intent)"를 만듭니다.
-            val intent = Intent(this, BleSearchingActivity::class.java)
+            val intent = Intent(this, BleWaitingActivity::class.java)
 
             // 4. 만들어진 Intent를 실행하여 화면을 전환합니다.
             startActivity(intent)
