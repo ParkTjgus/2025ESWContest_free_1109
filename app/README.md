@@ -6,4 +6,4 @@
 
 - 개발자: 박서현
 - 개발기간: 2025.08.13 ~
-- 개발환경: `React Native(v.0.79.5)`, `expo(v.53.0.20)`, `typescript(v.5.8.3)`
+- 개발환경: `React Native(v.0.79.5)`, `expo(v.53.0.20)`, `typescript(v.5.8.3)`, `Android 12이상`

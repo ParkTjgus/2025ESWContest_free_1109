@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">app</string>
+    <string name="mainText">여기는 메인 화면입니다</string>
+    <string name="bleSearchingMoveBtn">블루투스 검색 화면으로 이동</string>
+</resources>
