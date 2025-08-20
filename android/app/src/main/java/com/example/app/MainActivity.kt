@@ -12,6 +12,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -23,10 +24,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rvExerciseList: RecyclerView
     private lateinit var btnAddExercise: Button
     private lateinit var btnStartWorkout: Button
-    private lateinit var btnSavePlan: Button
 
-    // 날짜별 운동 계획을 저장하는 Map
-    private val workoutPlans = mutableMapOf<String, MutableList<ExerciseItem>>()
+    // 이 변수는 이제 필요하지 않습니다.
+    // private lateinit var btnSavePlan: Button
+
+    private lateinit var db: FirebaseFirestore
 
     private val exerciseList = mutableListOf<ExerciseItem>()
     private lateinit var exerciseAdapter: ExerciseAdapter
@@ -36,28 +38,26 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // 1. 모든 뷰를 먼저 초기화합니다.
+        db = FirebaseFirestore.getInstance()
+
         btnPrevDay = findViewById(R.id.btn_prev_day)
         btnNextDay = findViewById(R.id.btn_next_day)
         tvDate = findViewById(R.id.tv_date)
         rvExerciseList = findViewById(R.id.rv_exercise_list)
         btnAddExercise = findViewById(R.id.btn_add_exercise)
         btnStartWorkout = findViewById(R.id.btn_start_workout)
+        // btnSavePlan은 이제 필요 없습니다.
 
-        // 뷰 초기화 후 버튼을 맨 앞으로 가져옵니다.
         btnPrevDay.bringToFront()
         btnNextDay.bringToFront()
 
-        // 2. 뷰 초기화가 완료된 후, RecyclerView를 설정합니다.
         exerciseAdapter = ExerciseAdapter(exerciseList)
         rvExerciseList.layoutManager = LinearLayoutManager(this)
         rvExerciseList.adapter = exerciseAdapter
 
-        // 3. 날짜 표시 초기화 및 리스너를 설정합니다.
         updateDateDisplay()
-        loadExercisesForCurrentDate() // 시작 시 현재 날짜의 운동 목록 로드
+        loadExercisesForCurrentDate()
 
-        // 리스너 설정
         btnPrevDay.setOnClickListener {
             currentDate.add(Calendar.DAY_OF_YEAR, -1)
             updateDateDisplay()
@@ -77,6 +77,8 @@ class MainActivity : AppCompatActivity() {
             val intent = Intent(this, BleWaitingActivity::class.java)
             startActivity(intent)
         }
+
+        // '운동 계획 저장' 버튼 리스너는 이제 필요 없습니다.
     }
 
     private fun updateDateDisplay() {
@@ -107,14 +109,11 @@ class MainActivity : AppCompatActivity() {
                 if (exerciseName.isNotBlank() && reps > 0 && sets > 0) {
                     val newExercise = ExerciseItem(exerciseName, sets, reps, roundTripTime, restTime)
 
-                    // 현재 날짜의 운동 목록에 운동 항목을 추가합니다.
-                    val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(currentDate.time)
-                    val exercises = workoutPlans.getOrPut(dateKey) { mutableListOf() }
-                    exercises.add(newExercise)
-
-                    // 화면에 표시되는 목록도 업데이트합니다.
                     exerciseList.add(newExercise)
                     exerciseAdapter.notifyItemInserted(exerciseList.size - 1)
+
+                    // ⭐ 운동 항목이 추가될 때마다 Firebase에 저장합니다.
+                    saveWorkoutPlan()
                 }
                 dialog.dismiss()
             }
@@ -124,18 +123,64 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // Firestore에서 운동 데이터를 로드하는 함수
     private fun loadExercisesForCurrentDate() {
-        // 현재 날짜 키를 가져옵니다.
         val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(currentDate.time)
 
-        // 해당 날짜의 운동 목록을 가져옵니다. 없으면 빈 목록을 반환합니다.
-        val exercises = workoutPlans[dateKey] ?: emptyList()
+        db.collection("workout_plans")
+            .document(dateKey)
+            .get()
+            .addOnSuccessListener { document ->
+                exerciseList.clear()
+                if (document.exists()) {
+                    val exercises = document.get("exercises") as? List<Map<String, Any>>
+                    exercises?.forEach { map ->
+                        val name = map["name"] as? String ?: ""
+                        val sets = (map["sets"] as? Long)?.toInt() ?: 0
+                        val reps = (map["reps"] as? Long)?.toInt() ?: 0
+                        val roundTripTime = (map["roundTripTime"] as? Long)?.toInt() ?: 0
+                        val restTime = (map["restTime"] as? Long)?.toInt() ?: 0
 
-        // 현재 화면에 표시된 목록을 지우고 새 목록으로 채웁니다.
-        exerciseList.clear()
-        exerciseList.addAll(exercises)
+                        val loadedExercise = ExerciseItem(name, sets, reps, roundTripTime, restTime)
+                        exerciseList.add(loadedExercise)
+                    }
+                }
+                exerciseAdapter.notifyDataSetChanged()
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "데이터 로드 실패.", Toast.LENGTH_SHORT).show()
+                exerciseList.clear()
+                exerciseAdapter.notifyDataSetChanged()
+            }
+    }
 
-        // RecyclerView를 새로고침하여 화면을 업데이트합니다.
-        exerciseAdapter.notifyDataSetChanged()
+    // Firestore에 운동 데이터를 저장하는 함수
+    private fun saveWorkoutPlan() {
+        val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(currentDate.time)
+
+        val exercisesToSave = exerciseList.map { exercise ->
+            hashMapOf(
+                "name" to exercise.name,
+                "sets" to exercise.sets,
+                "reps" to exercise.reps,
+                "roundTripTime" to exercise.roundTripTime,
+                "restTime" to exercise.restTime
+            )
+        }
+
+        val workoutPlanData = hashMapOf(
+            "date" to dateKey,
+            "exercises" to exercisesToSave
+        )
+
+        db.collection("workout_plans")
+            .document(dateKey)
+            .set(workoutPlanData)
+            .addOnSuccessListener {
+                Toast.makeText(this, "운동 계획이 Firebase에 저장되었습니다.", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "저장 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 }
