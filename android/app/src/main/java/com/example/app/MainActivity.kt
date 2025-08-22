@@ -12,6 +12,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.example.app.exercise.ExerciseAdapter
+import com.example.app.exercise.ExerciseItem
 import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.*
@@ -107,7 +109,8 @@ class MainActivity : AppCompatActivity() {
                 val restTime = etRestTime.text.toString().toIntOrNull() ?: 0
 
                 if (exerciseName.isNotBlank() && reps > 0 && sets > 0) {
-                    val newExercise = ExerciseItem(exerciseName, sets, reps, roundTripTime, restTime)
+                    val newExercise =
+                        ExerciseItem(exerciseName, sets, reps, roundTripTime, restTime)
 
                     exerciseList.add(newExercise)
                     exerciseAdapter.notifyItemInserted(exerciseList.size - 1)
