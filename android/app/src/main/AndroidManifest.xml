@@ -34,6 +34,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.App">
         <activity
+            android:name=".ble.DeviceControlActivity"
+            android:exported="false" />
+        <activity
             android:name=".exercise.ExerciseSetActivity"
             android:exported="false" />
         <activity
@@ -48,7 +51,6 @@
         <activity
             android:name=".exercise.DailyPlanActivity"
             android:exported="false" />
-
         <activity
             android:name=".exercise.RestTimerActivity"
             android:exported="false" />
@@ -64,7 +66,9 @@
         <activity
             android:name=".BleWaitingActivity"
             android:exported="false" />
-
+        <activity
+            android:name=".ble.BleScanActivity"
+            android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true">
