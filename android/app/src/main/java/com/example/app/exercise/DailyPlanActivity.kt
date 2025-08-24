@@ -1,4 +1,4 @@
-package com.example.app
+package com.example.app.exercise // 실제 패키지명으로 변경하세요
 
 import android.content.Intent
 import android.os.Bundle
@@ -13,18 +13,18 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.app.exercise.ExerciseAdapter
-import com.example.app.exercise.ExerciseItem
-import com.example.app.exercise.ExerciseSetActivity
+import com.example.app.R // 실제 R 클래스 경로로 변경하세요
+// ExerciseManager는 com.example.app.exercise 패키지에 있다고 가정합니다.
+// ExerciseItem은 별도 파일(ExerciseItem.kt)에 정의되어 있고, 같은 패키지이거나 import 되었다고 가정합니다.
+
 import com.google.firebase.firestore.FirebaseFirestore
 import java.text.SimpleDateFormat
 import java.util.*
 
+// ExerciseItem data class 정의는 여기서 제거 (별도 파일 ExerciseItem.kt에 있다고 가정)
+
 class DailyPlanActivity : AppCompatActivity() {
 
-    /*
-    * UI 변수
-    * */
     private lateinit var btnPrevDay: ImageButton
     private lateinit var btnNextDay: ImageButton
     private lateinit var tvDate: TextView
@@ -32,14 +32,10 @@ class DailyPlanActivity : AppCompatActivity() {
     private lateinit var btnAddExercise: Button
     private lateinit var btnStartWorkout: Button
 
-
-    /**
-     * DB
-     */
     private lateinit var db: FirebaseFirestore
 
-    private val exerciseList = mutableListOf<ExerciseItem>()
-    private lateinit var exerciseAdapter: ExerciseAdapter
+    private val exerciseList = mutableListOf<ExerciseItem>() // Activity의 로컬 리스트
+    private lateinit var exerciseAdapter: ExerciseAdapter // ExerciseAdapter는 별도로 구현 필요
     private var currentDate = Calendar.getInstance()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,8 +79,8 @@ class DailyPlanActivity : AppCompatActivity() {
         btnStartWorkout.setOnClickListener {
             Log.d("DailyPlanActivity", "btnStartWorkout clicked. exerciseList size: ${exerciseList.size}")
             if (exerciseList.isNotEmpty()) {
-                Log.d("DailyPlanActivity", "First exercise in list: ${exerciseList[0].name}") // 첫 번째 운동 이름 로깅
-                ExerciseManager.startExerciseSession(exerciseList)
+                Log.d("DailyPlanActivity", "First exercise in list: ${exerciseList[0].name}")
+                ExerciseManager.startExerciseSession(this.exerciseList)
                 val intent = Intent(this, ExerciseSetActivity::class.java)
                 startActivity(intent)
             } else {
@@ -122,10 +118,9 @@ class DailyPlanActivity : AppCompatActivity() {
                     val newExercise =
                         ExerciseItem(exerciseName, sets, reps, roundTripTime, restTime)
 
-                    exerciseList.add(newExercise)
-                    exerciseAdapter.notifyItemInserted(exerciseList.size - 1)
+                    this.exerciseList.add(newExercise)
+                    exerciseAdapter.notifyItemInserted(this.exerciseList.size - 1)
 
-                    // ⭐ 운동 항목이 추가될 때마다 Firebase에 저장합니다.
                     saveWorkoutPlan()
                 }
                 dialog.dismiss()
@@ -136,15 +131,16 @@ class DailyPlanActivity : AppCompatActivity() {
             .show()
     }
 
-    // Firestore에서 운동 데이터를 로드하는 함수
     private fun loadExercisesForCurrentDate() {
         val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(currentDate.time)
+        Log.d("DailyPlanActivity", "Loading exercises for date: $dateKey")
 
         db.collection("workout_plans")
             .document(dateKey)
             .get()
             .addOnSuccessListener { document ->
-                exerciseList.clear()
+                Log.d("DailyPlanActivity", "Firestore success for date: $dateKey. Document exists: ${document.exists()}")
+                this.exerciseList.clear()
                 if (document.exists()) {
                     val exercises = document.get("exercises") as? List<Map<String, Any>>
                     exercises?.forEach { map ->
@@ -155,23 +151,24 @@ class DailyPlanActivity : AppCompatActivity() {
                         val restTime = (map["restTime"] as? Long)?.toInt() ?: 0
 
                         val loadedExercise = ExerciseItem(name, sets, reps, roundTripTime, restTime)
-                        exerciseList.add(loadedExercise)
+                        this.exerciseList.add(loadedExercise)
                     }
                 }
                 exerciseAdapter.notifyDataSetChanged()
+                Log.d("DailyPlanActivity", "Local exerciseList updated. Size: ${this.exerciseList.size}")
             }
-            .addOnFailureListener {
-                Toast.makeText(this, "데이터 로드 실패.", Toast.LENGTH_SHORT).show()
-                exerciseList.clear()
+            .addOnFailureListener { e ->
+                Log.e("DailyPlanActivity", "Error loading exercises for $dateKey", e)
+                Toast.makeText(this, "데이터 로드 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                this.exerciseList.clear()
                 exerciseAdapter.notifyDataSetChanged()
             }
     }
 
-    // Firestore에 운동 데이터를 저장하는 함수
     private fun saveWorkoutPlan() {
         val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(currentDate.time)
 
-        val exercisesToSave = exerciseList.map { exercise ->
+        val exercisesToSave = this.exerciseList.map { exercise ->
             hashMapOf(
                 "name" to exercise.name,
                 "sets" to exercise.sets,
@@ -190,9 +187,11 @@ class DailyPlanActivity : AppCompatActivity() {
             .document(dateKey)
             .set(workoutPlanData)
             .addOnSuccessListener {
+                Log.d("DailyPlanActivity", "Workout plan saved for $dateKey")
                 Toast.makeText(this, "운동 계획이 Firebase에 저장되었습니다.", Toast.LENGTH_SHORT).show()
             }
             .addOnFailureListener { e ->
+                Log.e("DailyPlanActivity", "Error saving workout plan for $dateKey", e)
                 Toast.makeText(this, "저장 실패: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }

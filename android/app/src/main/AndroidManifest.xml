@@ -46,7 +46,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".DailyPlanActivity"
+            android:name=".exercise.DailyPlanActivity"
             android:exported="false" />
 
         <activity

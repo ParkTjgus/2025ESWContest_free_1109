@@ -7,7 +7,6 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.example.app.exercise.ExerciseItem
 import com.example.app.R
 
 class ExerciseAdapter(private val exerciseList: MutableList<ExerciseItem>) :
