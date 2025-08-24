@@ -4,7 +4,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothProfile
-import android.bluetooth.BluetoothGattDescriptor // 추가된 import
+import android.bluetooth.BluetoothGattDescriptor
 import android.os.Bundle
 import android.util.Log
 import android.widget.Button
@@ -26,13 +26,17 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
     private var deviceName: String? = null
     private var deviceAddress: String? = null
 
+    // --- 현재 운동 목표 속도 변수 추가 ---
+    private var currentTargetSpeed: Int = 15 // 예시: 현재 운동 목표 속도 (필요에 따라 값 변경 또는 다른 곳에서 설정)
+    // ---
+
     companion object {
         private const val TAG = "DeviceControlActivity"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_device_control)
+        setContentView(R.layout.activity_device_control) // activity_device_control 레이아웃 사용 가정
 
         deviceName = intent.getStringExtra(BleScanActivity.EXTRA_DEVICE_NAME)
         deviceAddress = intent.getStringExtra(BleScanActivity.EXTRA_DEVICE_ADDRESS)
@@ -48,11 +52,11 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
         tvDeviceAddress = findViewById(R.id.tvDeviceAddress)
         tvConnectionState = findViewById(R.id.tvConnectionState)
         tvReceivedData = findViewById(R.id.tvReceivedData)
-        btnReadData = findViewById(R.id.btnReadData)
+        btnReadData = findViewById(R.id.btnReadData) // activity_device_control 에 이 ID가 있다고 가정
 
         tvDeviceName.text = "Device Name: ${deviceName ?: "Unknown"}"
         tvDeviceAddress.text = "Address: $deviceAddress"
-        tvConnectionState.text = "Status: Initializing..." // 초기 상태
+        tvConnectionState.text = "Status: Initializing..."
 
         BleConnectionManager.registerListener(this)
 
@@ -65,16 +69,13 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
         }
         else {
             Log.w(TAG, "Not connected to $deviceAddress. Current state: ${BleConnectionManager.connectionState}, Manager connected device: ${BleConnectionManager.connectedDevice?.address}")
-            updateConnectionState(BluetoothProfile.STATE_DISCONNECTED) // 명시적으로 연결 안된 상태로 UI 업데이트
-            // 만약 자동으로 재연결을 시도하고 싶다면 아래 주석 해제 (단, BleConnectionManager에서 connect 호출 시 이전 연결 해제 로직 주의)
-            // Log.d(TAG, "Attempting to connect to $deviceAddress now.")
-            // BleConnectionManager.connect(deviceAddress)
+            updateConnectionState(BluetoothProfile.STATE_DISCONNECTED)
+            // 자동으로 재연결을 시도하지 않는 것으로 가정
         }
 
         btnReadData.setOnClickListener {
             if (BleConnectionManager.isConnected() && BleConnectionManager.connectedDevice?.address == deviceAddress) {
                 Log.d(TAG, "Read Data button clicked. Requesting characteristic read.")
-                // BleConnectionManager.readTargetCharacteristic() 함수는 내부적으로 TARGET_READ_CHARACTERISTIC_UUID 또는 TARGET_NOTIFY_CHARACTERISTIC_UUID 를 읽음
                 BleConnectionManager.readTargetCharacteristic()
             } else {
                 Toast.makeText(this, "기기에 연결되어 있지 않거나 대상 기기가 아닙니다.", Toast.LENGTH_SHORT).show()
@@ -87,6 +88,11 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
         super.onDestroy()
         BleConnectionManager.unregisterListener(this)
         Log.d(TAG, "onDestroy called. Unregistered from BleConnectionManager.")
+        // 연결 해제 로직은 BleScanActivity 또는 앱 전체 생명주기 관리에서 처리될 수 있음
+        // 만약 이 Activity가 닫힐 때 항상 연결을 끊어야 한다면 다음 주석 해제
+        // if (BleConnectionManager.connectedDevice?.address == deviceAddress) {
+        //     BleConnectionManager.disconnect()
+        // }
     }
 
     private fun updateConnectionState(newState: Int) {
@@ -100,7 +106,7 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     tvConnectionState.text = "Status: Disconnected"
                     btnReadData.isEnabled = false
-                    tvReceivedData.text = "연결 끊김" // 또는 이전 데이터 유지
+                    tvReceivedData.text = "연결 끊김"
                     Log.i(TAG, "UI Updated: Disconnected from $deviceName ($deviceAddress)")
                 }
                 BluetoothProfile.STATE_CONNECTING -> {
@@ -112,12 +118,8 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
         }
     }
 
-    // --- BleConnectionManager.BleConnectionListener 구현 ---
     override fun onConnectionStateChanged(newState: Int, gatt: BluetoothGatt?) {
         val eventDeviceAddress = gatt?.device?.address
-        // 이 Activity가 관심 있는 기기(deviceAddress)에 대한 연결 변경이거나,
-        // 이 Activity가 특정 기기를 지정하지 않았는데(deviceAddress == null) 연결이 끊긴 경우(모든 연결 끊김에 반응)
-        // 또는 이벤트의 기기 주소가 현재 이 Activity의 대상 기기와 같을 때만 UI 업데이트
         if (eventDeviceAddress == deviceAddress || (deviceAddress == null && newState == BluetoothProfile.STATE_DISCONNECTED)) {
             Log.d(TAG, "onConnectionStateChanged: Relevant state change. newState=$newState for device $eventDeviceAddress (Target: $deviceAddress)")
             updateConnectionState(newState)
@@ -131,9 +133,7 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.i(TAG, "Services discovered successfully for $deviceName.")
                 runOnUiThread { Toast.makeText(this, "서비스 발견 완료 ($deviceName)", Toast.LENGTH_SHORT).show() }
-                // 서비스 발견 후 자동으로 특정 특성을 읽거나 알림을 설정하고 싶다면 여기서 BleConnectionManager의 함수 호출
-                // 예: BleConnectionManager.enableNotifications(BleConnectionManager.TARGET_SERVICE_UUID, BleConnectionManager.TARGET_NOTIFY_CHARACTERISTIC_UUID)
-                // 예: BleConnectionManager.readTargetCharacteristic()
+                // BleConnectionManager에서 TARGET_NOTIFY_CHARACTERISTIC_UUID에 대해 알림 자동 활성화 시도
             } else {
                 Log.w(TAG, "Service discovery failed for $deviceName with status: $status")
                 runOnUiThread { Toast.makeText(this, "서비스 발견 실패: $status", Toast.LENGTH_SHORT).show() }
@@ -143,9 +143,8 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
 
     @SuppressLint("SetTextI18n")
     override fun onCharacteristicRead(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, value: ByteArray?, status: Int) {
-        // 읽기 요청한 특성(TARGET_READ_CHARACTERISTIC_UUID) 또는 btnReadData에서 읽기를 시도한 알림 특성(TARGET_NOTIFY_CHARACTERISTIC_UUID)에 대한 응답인지 확인
         val targetReadUuid = BleConnectionManager.TARGET_READ_CHARACTERISTIC_UUID
-        val targetNotifyUuidForRead = BleConnectionManager.TARGET_NOTIFY_CHARACTERISTIC_UUID // readTargetCharacteristic()에서 읽을 수 있음
+        val targetNotifyUuidForRead = BleConnectionManager.TARGET_NOTIFY_CHARACTERISTIC_UUID
 
         if (gatt?.device?.address == deviceAddress &&
             (characteristic?.uuid == targetReadUuid || characteristic?.uuid == targetNotifyUuidForRead) ) {
@@ -154,8 +153,8 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
                 val hexString = value?.joinToString(separator = " ") { String.format("%02X", it) } ?: "N/A"
                 Log.i(TAG, "Characteristic ${characteristic?.uuid} read successfully. Value (UTF-8): '$dataString', (Hex): $hexString")
                 runOnUiThread {
-                    tvReceivedData.text = "읽은 데이터 (UTF-8): $dataString\n읽은 데이터 (Hex): $hexString"
-                    Toast.makeText(this, "데이터 읽기 성공: $dataString", Toast.LENGTH_SHORT).show()
+                    tvReceivedData.text = "읽은 데이터 (UTF-8): $dataString\n읽은 데이터 (Hex): $hexString" // 기존 표시 방식 유지
+                    Toast.makeText(this, "읽은 데이터: $dataString", Toast.LENGTH_SHORT).show()
                 }
             } else {
                 Log.w(TAG, "Characteristic read failed for ${characteristic?.uuid}, status: $status")
@@ -170,7 +169,7 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
     }
 
     override fun onCharacteristicWrite(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, status: Int) {
-        if (gatt?.device?.address == deviceAddress) { // 현재 Activity가 관리하는 기기에 대한 이벤트인지 확인
+        if (gatt?.device?.address == deviceAddress) {
             val charUuid = characteristic?.uuid ?: "Unknown Characteristic"
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.i(TAG, "Characteristic $charUuid written successfully.")
@@ -184,14 +183,37 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
 
     @SuppressLint("SetTextI18n")
     override fun onCharacteristicChanged(gatt: BluetoothGatt?, characteristic: BluetoothGattCharacteristic?, value: ByteArray?) {
-        // TARGET_NOTIFY_CHARACTERISTIC_UUID와 일치하는지 확인
+        // TARGET_NOTIFY_CHARACTERISTIC_UUID (ACCEL_TEXT_CHAR_UUID)와 일치하는지 확인
         if (gatt?.device?.address == deviceAddress && characteristic?.uuid == BleConnectionManager.TARGET_NOTIFY_CHARACTERISTIC_UUID) {
             val dataString = value?.let { String(it, Charsets.UTF_8) } ?: "N/A"
-            val hexString = value?.joinToString(separator = " ") { String.format("%02X", it) } ?: "N/A"
-            Log.i(TAG, "Characteristic ${characteristic.uuid} changed (Notification). Value (UTF-8): '$dataString', (Hex): $hexString")
+            val hexString = value?.joinToString(separator = " ") { String.format("%02X", it) } ?: "N/A" // Hex는 로그용으로 계속 사용 가능
+            Log.i(TAG, "Characteristic ${characteristic?.uuid} changed (Notification). Value (UTF-8): '$dataString', (Hex): $hexString")
+
             runOnUiThread {
-                tvReceivedData.text = "알림 수신 (UTF-8): $dataString\n알림 수신 (Hex): $hexString"
+                // 기존 알림 데이터 표시 로직 (Hex 표시 여부는 이전 논의에 따라 유지 또는 제거)
+                tvReceivedData.text = "알림 수신 (UTF-8): $dataString\n알림 수신 (Hex): $hexString" // 기존 표시 방식 유지
                 Toast.makeText(this, "알림 데이터: $dataString", Toast.LENGTH_SHORT).show()
+
+                // --- "START_REQ" 수신 시 응답 로직 추가 ---
+                if (dataString == "START_REQ") {
+                    Log.d(TAG, "Received 'START_REQ'. Sending 'ACK_START' with target speed: $currentTargetSpeed.")
+
+                    // 응답 데이터 생성: ["ACK_START", 현재운동목표속도]
+                    val responseString = """["ACK_START",$currentTargetSpeed]"""
+                    val responseBytes = responseString.toByteArray(Charsets.UTF_8)
+
+                    BleConnectionManager.TARGET_WRITE_CHARACTERISTIC_UUID?.let { writeUuid ->
+                        BleConnectionManager.writeCharacteristic(
+                            BleConnectionManager.TARGET_SERVICE_UUID, // SENSOR_SERVICE_UUID
+                            writeUuid, // CMD_CHAR_UUID
+                            responseBytes,
+                            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT // 필요시 WRITE_TYPE_NO_RESPONSE
+                        )
+                        Log.i(TAG, "Sent response to CMD_CHAR: $responseString")
+                        Toast.makeText(this, "응답 전송: $responseString", Toast.LENGTH_SHORT).show()
+                    } ?: Log.w(TAG, "TARGET_WRITE_CHARACTERISTIC_UUID is null. Cannot send ACK_START.")
+                }
+                // --- 응답 로직 끝 ---
             }
         } else {
             Log.d(TAG, "Characteristic changed for ${characteristic?.uuid} (device: ${gatt?.device?.address}), but not the target notify characteristic or wrong device.")
@@ -199,7 +221,7 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
     }
 
     override fun onDescriptorWrite(gatt: BluetoothGatt?, descriptor: BluetoothGattDescriptor?, status: Int) {
-        if (gatt?.device?.address == deviceAddress) { // 현재 Activity가 관리하는 기기에 대한 이벤트인지 확인
+        if (gatt?.device?.address == deviceAddress) {
             val descUuid = descriptor?.uuid ?: "Unknown Descriptor"
             val charUuid = descriptor?.characteristic?.uuid ?: "Unknown Characteristic"
             if (status == BluetoothGatt.GATT_SUCCESS) {
