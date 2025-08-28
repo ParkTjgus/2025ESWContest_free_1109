@@ -6,7 +6,7 @@
     android:padding="16dp">
 
     <TextView
-        android:id="@+id/deviceNameTextView"
+        android:id="@+id/tvDeviceName"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="18sp"
@@ -14,10 +14,10 @@
         android:text="Device Name" />
 
     <TextView
-        android:id="@+id/deviceAddressTextView"
+        android:id="@+id/tvDeviceAddress"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textSize="14sp"
-        android:text="Device Address" />
+        android:text="XX:XX:XX:XX:XX:XX" />
 
 </LinearLayout>
