@@ -199,7 +199,7 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
                     Log.d(TAG, "Received 'START_REQ'. Sending 'ACK_START' with target speed: $currentTargetSpeed.")
 
                     // 응답 데이터 생성: ["ACK_START", 현재운동목표속도]
-                    val responseString = """["ACK_START",$currentTargetSpeed]"""
+                    val responseString = """[ACK_START,$currentTargetSpeed]"""
                     val responseBytes = responseString.toByteArray(Charsets.UTF_8)
 
                     BleConnectionManager.TARGET_WRITE_CHARACTERISTIC_UUID?.let { writeUuid ->
