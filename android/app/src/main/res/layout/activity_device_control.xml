@@ -1,16 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
+    android:gravity="center_vertical"
+    android:padding="32dp"
     tools:context=".ble.DeviceControlActivity">
+
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="match_parent"
+        android:layout_height="182dp"
+        app:srcCompat="@drawable/bluetooth_connected_48px" />
+
+    <TextView
+        android:id="@+id/info"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="64dp"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:layout_gravity="center_horizontal"
+        tools:text="디바이스의 시작 신호 대기 중..." />
 
     <TextView
         android:id="@+id/tvDeviceName"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginTop="40dp"
         android:textSize="20sp"
         android:textStyle="bold"
         tools:text="Device Name: Placeholder" />
@@ -30,23 +49,5 @@
         android:layout_marginTop="8dp"
         android:textSize="16sp"
         tools:text="Status: Connecting..." />
-
-    <Button
-        android:id="@+id/btnReadData"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="데이터 읽기" />
-
-    <TextView
-        android:id="@+id/tvReceivedData"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:background="#f0f0f0"
-        android:padding="8dp"
-        android:minLines="3"
-        android:text="수신된 데이터 없음"
-        android:textSize="16sp" />
 
 </LinearLayout>

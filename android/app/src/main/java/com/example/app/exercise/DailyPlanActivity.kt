@@ -14,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.app.R // 실제 R 클래스 경로로 변경하세요
+import com.example.app.ble.BleScanActivity
 // ExerciseManager는 com.example.app.exercise 패키지에 있다고 가정합니다.
 // ExerciseItem은 별도 파일(ExerciseItem.kt)에 정의되어 있고, 같은 패키지이거나 import 되었다고 가정합니다.
 
@@ -81,7 +82,7 @@ class DailyPlanActivity : AppCompatActivity() {
             if (exerciseList.isNotEmpty()) {
                 Log.d("DailyPlanActivity", "First exercise in list: ${exerciseList[0].name}")
                 ExerciseManager.startExerciseSession(this.exerciseList)
-                val intent = Intent(this, ExerciseSetActivity::class.java)
+                val intent = Intent(this@DailyPlanActivity, BleScanActivity::class.java)
                 startActivity(intent)
             } else {
                 Toast.makeText(this, "운동 목록이 비어있습니다.", Toast.LENGTH_SHORT).show()
