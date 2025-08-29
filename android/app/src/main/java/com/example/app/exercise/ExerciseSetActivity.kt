@@ -1,166 +1,198 @@
-package com.example.app.exercise // 실제 패키지명으로 변경하세요
+package com.example.app.exercise
 
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import android.util.Log
+import android.text.method.ScrollingMovementMethod
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.example.app.R // 실제 R 클래스 경로로 변경하세요
-// ExerciseManager와 SessionState는 com.example.app.exercise 패키지에 있다고 가정합니다.
-// ExerciseItem도 마찬가지로 import 필요
-
+import com.example.app.R
+import com.example.app.ble.BleConnectionManager
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
+import org.json.JSONObject
+import android.util.Log // Log는 필요시 계속 사용
 
-class ExerciseSetActivity : AppCompatActivity() {
+class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataListener {
 
     private lateinit var exerciseNameTextView: TextView
     private lateinit var currentRepsTextView: TextView
     private lateinit var targetRepsTextView: TextView
-    private lateinit var setInfoTextView: TextView
+    private lateinit var setInfoTextView: TextView // 세트 정보 표시용
+    private lateinit var debugLogTextView: TextView // 디버그 로그 표시용
     private lateinit var skipButton: Button
     private lateinit var lineChart: LineChart
+
+    private val realTimeEntries = ArrayList<Entry>()
+    private lateinit var realTimeDataSet: LineDataSet
+
+    private val debugStringBuilder = StringBuilder()
+
+    companion object {
+        private const val TAG = "ExerciseSetActivity"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_exercise_set)
-
-        Log.d("ExerciseSetActivity", "onCreate called. ExerciseManager state: ${ExerciseManager.state}")
+        Log.d(TAG, "onCreate CALLED")
 
         exerciseNameTextView = findViewById(R.id.exerciseNameTextView)
         currentRepsTextView = findViewById(R.id.currentRepsTextView)
         targetRepsTextView = findViewById(R.id.targetRepsTextView)
-        setInfoTextView = findViewById(R.id.setInfoTextView)
+        setInfoTextView = findViewById(R.id.setInfoTextView) // 세트 정보용 TextView
+        debugLogTextView = findViewById(R.id.debugLogTextView) // 디버그 로그용 TextView
         lineChart = findViewById(R.id.speedGraphView)
         skipButton = findViewById(R.id.skipButton)
 
+        debugLogTextView.movementMethod = ScrollingMovementMethod() // 스크롤 가능하게
+        appendToDebugLog("onCreate: State=${ExerciseManager.state}")
+
+        initializeChartComponents()
+
+        val currentExerciseName = ExerciseManager.getCurrentExercise()?.name ?: "N/A"
+        appendToDebugLog("onCreate Initial: State=${ExerciseManager.state}, Ex=${currentExerciseName}")
+
         if (ExerciseManager.state == SessionState.IDLE) {
-            Log.w("ExerciseSetActivity", "Exercise session not started (IDLE state on create). Finishing activity.")
-            Toast.makeText(this, "운동 세션이 시작되지 않았습니다. 앱을 다시 시작해주세요.", Toast.LENGTH_LONG).show()
+            appendToDebugLog("onCreate: IDLE state. Finishing.")
+            Toast.makeText(this, "운동 세션이 시작되지 않았습니다.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
 
         val currentExerciseOnCreate = ExerciseManager.getCurrentExercise()
         if (currentExerciseOnCreate == null) {
-            Log.e("ExerciseSetActivity", "No current exercise data available (onCreate), but session not IDLE. State: ${ExerciseManager.state}. Finishing.")
-            Toast.makeText(this, "현재 운동 정보를 가져올 수 없습니다. 앱을 다시 시작해주세요.", Toast.LENGTH_LONG).show()
+            appendToDebugLog("onCreate: No current exercise. Finishing.")
+            Toast.makeText(this, "현재 운동 정보를 가져올 수 없습니다.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
-        Log.d("ExerciseSetActivity", "onCreate: Initial exercise: ${currentExerciseOnCreate.name}, State: ${ExerciseManager.state}")
+        appendToDebugLog("onCreate: InitialEx=${currentExerciseOnCreate.name}, State=${ExerciseManager.state}")
 
-
-        // skipButton 로직 수정
         skipButton.setOnClickListener {
+            appendToDebugLog("Skip button clicked. Current state before: ${ExerciseManager.state}")
             val currentStateBeforeAction = ExerciseManager.state
-            Log.d("ExerciseSetActivity", "Skip button clicked. Current state before action: $currentStateBeforeAction")
-
             if (currentStateBeforeAction == SessionState.WORKING) {
-                ExerciseManager.moveToNextStep() // 상태가 RESTING 또는 FINISHED로 변경됨
-                val newState = ExerciseManager.state
-                Log.d("ExerciseSetActivity", "State after moveToNextStep(): $newState")
-
-                if (newState == SessionState.RESTING) {
+                ExerciseManager.moveToNextStep()
+                appendToDebugLog("State after moveToNextStep(): ${ExerciseManager.state}")
+                if (ExerciseManager.state == SessionState.RESTING) {
                     val currentExerciseForRest = ExerciseManager.getCurrentExercise()
                     if (currentExerciseForRest != null) {
-                        Log.d("ExerciseSetActivity", "Transitioning to RestTimerActivity. Rest time: ${currentExerciseForRest.restTime}s")
+                        appendToDebugLog("To RestTimer. Rest: ${currentExerciseForRest.restTime}s")
                         val intent = Intent(this, RestTimerActivity::class.java)
-                        // RestTimerActivity.EXTRA_REST_TIME_SECONDS는 RestTimerActivity에 정의된 상수여야 함
                         intent.putExtra("EXTRA_REST_TIME_SECONDS", currentExerciseForRest.restTime.toLong())
                         startActivity(intent)
-                        // 중요: RestTimerActivity로 바로 넘어가므로 여기서는 refreshUi()를 호출하지 않음
                     } else {
-                        // 이 경우는 발생하면 안 됨 (moveToNextStep이 RESTING으로 바꿨다면 다음 운동 또는 다음 세트가 있다는 의미)
-                        Log.e("ExerciseSetActivity", "State is RESTING but currentExercise is null. This is unexpected. Refreshing UI.")
+                        appendToDebugLog("State RESTING but currentEx NULL. Refreshing.")
                         refreshUi()
                     }
                 } else {
-                    // newState가 FINISHED 이거나 다른 상태일 경우 (예: 에러로 IDLE이 된 경우)
-                    // refreshUi()를 호출하여 해당 상태에 맞는 UI를 보여주거나 Activity를 종료함
-                    Log.d("ExerciseSetActivity", "State is $newState (not RESTING after WORKING). Refreshing UI.")
                     refreshUi()
                 }
             } else if (currentStateBeforeAction == SessionState.RESTING) {
-                // ExerciseSetActivity의 '휴식 건너뛰기' 버튼은 RestTimerActivity에서 휴식을 관리하므로
-                // 여기서는 토스트 메시지를 보여주거나, 이 버튼의 역할을 재정의해야 함.
-                // 예를 들어, RestTimerActivity를 강제 종료하고 즉시 다음 운동 시작 ( ExerciseManager.finishRest() 호출 )
-                Log.d("ExerciseSetActivity", "Skip button pressed during RESTING state in ExerciseSetActivity.")
+                appendToDebugLog("Skip during RESTING (in ExSetActivity).")
                 Toast.makeText(this, "휴식은 타이머 화면에서 관리됩니다.", Toast.LENGTH_SHORT).show()
-                // 또는 ExerciseManager.finishRest() 호출 후 refreshUi() -> 이렇게 하면 타이머 없이 바로 다음 운동 시작 가능
-                // ExerciseManager.finishRest()
-                // refreshUi()
             } else {
-                Log.d("ExerciseSetActivity", "Skip button clicked in unhandled state: $currentStateBeforeAction")
-                refreshUi() // 예외 상황 처리
+                appendToDebugLog("Skip in unhandled state: $currentStateBeforeAction")
+                refreshUi()
+            }
+        }
+    }
+
+    private fun appendToDebugLog(message: String) {
+        val logWithMessage = "[${System.currentTimeMillis() % 10000}] $message" // 간단한 타임스탬프 추가
+        debugStringBuilder.append("\n").append(logWithMessage)
+        if (debugStringBuilder.length > 3000) { // 길이 제한 3000자로 늘림
+            debugStringBuilder.delete(0, debugStringBuilder.length - 3000)
+        }
+        debugLogTextView.text = debugStringBuilder.toString()
+
+        val layout = debugLogTextView.layout
+        if (layout != null) {
+            val scrollAmount = layout.getLineTop(debugLogTextView.lineCount) - debugLogTextView.height
+            if (scrollAmount > 0) {
+                debugLogTextView.scrollTo(0, scrollAmount)
+            } else {
+                debugLogTextView.scrollTo(0, 0)
             }
         }
     }
 
     override fun onResume() {
         super.onResume()
-        Log.d("ExerciseSetActivity", "onResume called. ExerciseManager state: ${ExerciseManager.state}")
+        Log.d(TAG, "onResume CALLED")
+        appendToDebugLog("onResume: State BEFORE listener reg=${ExerciseManager.state}")
+        BleConnectionManager.setBleDataListener(this)
+        appendToDebugLog("onResume: Listener REGISTERED.")
+
+        val currentExerciseName = ExerciseManager.getCurrentExercise()?.name ?: "N/A"
+        appendToDebugLog("onResume AfterReg: State=${ExerciseManager.state}, Ex=${currentExerciseName}")
+
         if (ExerciseManager.state == SessionState.IDLE) {
-            Log.w("ExerciseSetActivity", "onResume: Session is IDLE (possibly after RestTimerActivity finished and all exercises done). Finishing activity.")
-            Toast.makeText(this, "운동 세션이 종료되었거나 시작되지 않았습니다.", Toast.LENGTH_LONG).show()
+            appendToDebugLog("onResume: IDLE state. Finishing.")
             finish()
             return
         }
-        // RestTimerActivity에서 돌아왔을 때 (또는 처음 시작 시) UI를 올바르게 설정
         refreshUi()
     }
 
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "onPause CALLED")
+        appendToDebugLog("onPause CALLED.")
+        BleConnectionManager.setBleDataListener(null)
+        appendToDebugLog("onPause: Listener UNREGISTERED.")
+    }
+
+    private fun initializeChartComponents() {
+        appendToDebugLog("initializeChartComponents CALLED.")
+        realTimeDataSet = LineDataSet(realTimeEntries, "측정된 실제 속도")
+        realTimeDataSet.color = Color.BLUE
+        realTimeDataSet.setCircleColor(Color.BLUE)
+        realTimeDataSet.lineWidth = 2f
+        realTimeDataSet.circleRadius = 3f
+        realTimeDataSet.setDrawValues(false)
+        setupSpeedChartAppearance()
+    }
+
     private fun setupSpeedChartAppearance() {
-        lineChart.clear()
+        appendToDebugLog("setupSpeedChartAppearance CALLED.")
         lineChart.description.isEnabled = false
         lineChart.setTouchEnabled(true)
         lineChart.isDragEnabled = true
         lineChart.setScaleEnabled(true)
         lineChart.setPinchZoom(true)
-
         val xAxis = lineChart.xAxis
         xAxis.position = XAxis.XAxisPosition.BOTTOM
         xAxis.setDrawGridLines(true)
         xAxis.granularity = 1f
-
-        val leftAxis = lineChart.axisLeft
-        leftAxis.setDrawGridLines(true)
-
+        lineChart.axisLeft.setDrawGridLines(true)
         lineChart.axisRight.isEnabled = false
         lineChart.legend.isEnabled = true
-        Log.d("ExerciseSetActivity", "Chart appearance setup.")
     }
 
-    private fun populateSpeedData() {
-        val currentExercise = ExerciseManager.getCurrentExercise() ?: return
-        val targetReps = currentExercise.reps
-
-        val measuredEntries = ArrayList<Entry>()
-        for (i in 0 until targetReps) {
-            val speed = (2.0f + Math.random() * 1.5f).toFloat()
-            measuredEntries.add(Entry(i.toFloat() + 1, speed))
+    private fun setupChartDataAndDisplay() {
+        appendToDebugLog("setupChartDataAndDisplay CALLED.")
+        val currentExercise = ExerciseManager.getCurrentExercise() ?: run {
+            appendToDebugLog("setupChart: currentExercise is NULL.")
+            return
         }
-        val measuredDataSet = LineDataSet(measuredEntries, "측정된 속도 (예시)")
-        measuredDataSet.color = Color.BLUE
-        measuredDataSet.setCircleColor(Color.BLUE)
-        measuredDataSet.lineWidth = 2f
-        measuredDataSet.circleRadius = 3f
-        measuredDataSet.setDrawValues(false)
+        appendToDebugLog("setupChart: Clearing entries (size=${realTimeEntries.size})")
+        realTimeEntries.clear()
 
         val targetEntries = ArrayList<Entry>()
+        val targetReps = currentExercise.reps
         val targetSpeedValue = currentExercise.roundTripTime.toFloat()
         if (targetSpeedValue <= 0f) {
-            Log.w("ExerciseSetActivity", "Target speed (roundTripTime) is invalid: $targetSpeedValue. Defaulting target line.")
+            appendToDebugLog("Target speed invalid: $targetSpeedValue. Defaulting.")
         }
-
         for (i in 0 until targetReps) {
             targetEntries.add(Entry(i.toFloat() + 1, if (targetSpeedValue > 0) targetSpeedValue else 3.0f))
         }
@@ -172,45 +204,41 @@ class ExerciseSetActivity : AppCompatActivity() {
         targetDataSet.setDrawValues(false)
 
         val dataSets = ArrayList<ILineDataSet>()
-        dataSets.add(measuredDataSet)
+        dataSets.add(realTimeDataSet)
         if (targetSpeedValue > 0) {
             dataSets.add(targetDataSet)
         }
-
         val lineData = LineData(dataSets)
         lineChart.data = lineData
         lineChart.invalidate()
-        Log.d("ExerciseSetActivity", "Speed data populated. Target reps: $targetReps. Target speed value: $targetSpeedValue")
+        appendToDebugLog("Chart setup: TargetReps=${currentExercise.reps}, TargetSpeed=${targetSpeedValue}")
     }
 
     private fun refreshUi() {
-        val currentExercise = ExerciseManager.getCurrentExercise() // onResume 등에서 호출될 때 getCurrentExercise 다시 호출
+        val currentExercise = ExerciseManager.getCurrentExercise()
         val currentState = ExerciseManager.state
+        appendToDebugLog("refreshUi: Ex=${currentExercise?.name ?: "N/A"}, St=$currentState")
 
-        Log.d("ExerciseSetActivity", "refreshUi. Current exercise: ${currentExercise?.name}, State: $currentState")
-
-        // 뷰 가시성 초기화 (WORKING 상태에서 필요한 것들만 다시 VISIBLE로)
         currentRepsTextView.visibility = View.GONE
         targetRepsTextView.visibility = View.GONE
         lineChart.visibility = View.GONE
+        findViewById<View>(android.R.id.content).setBackgroundColor(Color.WHITE) // 기본 배경색
 
         if (currentState == SessionState.IDLE) {
-            Log.w("ExerciseSetActivity", "refreshUi: Session is IDLE. Finishing activity.")
-            Toast.makeText(this, "운동 세션이 종료되었거나 시작되지 않았습니다.", Toast.LENGTH_LONG).show()
+            appendToDebugLog("refreshUi: IDLE. Finishing.")
+            Toast.makeText(this, "운동 세션이 종료되었거나 다음 운동 준비 중입니다.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
-
         if (currentState == SessionState.FINISHED) {
-            Log.i("ExerciseSetActivity", "refreshUi: All exercises finished!")
+            appendToDebugLog("refreshUi: FINISHED. Finishing.")
             Toast.makeText(this, "모든 운동이 완료되었습니다!", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
-
         if (currentExercise == null) {
-            Log.e("ExerciseSetActivity", "refreshUi: currentExercise is null, but state is $currentState (not IDLE/FINISHED). This is unexpected. Finishing.")
-            Toast.makeText(this, "운동 정보를 찾을 수 없습니다. 앱을 다시 시작해주세요.", Toast.LENGTH_LONG).show()
+            appendToDebugLog("refreshUi: currentExercise NULL but state $currentState. Finishing.")
+            Toast.makeText(this, "운동 정보를 찾을 수 없습니다.", Toast.LENGTH_LONG).show()
             finish()
             return
         }
@@ -223,45 +251,74 @@ class ExerciseSetActivity : AppCompatActivity() {
                 targetRepsTextView.visibility = View.VISIBLE
                 lineChart.visibility = View.VISIBLE
 
-                setInfoTextView.text = ExerciseManager.getCurrentSetInfo()
-                currentRepsTextView.text = "0" // TODO: 실제 반복 횟수 반영 필요
+                setInfoTextView.text = ExerciseManager.getCurrentSetInfo() // 세트 정보는 setInfoTextView에
+                currentRepsTextView.text = "0"
                 targetRepsTextView.text = currentExercise.reps.toString()
                 skipButton.text = "세트 완료"
                 skipButton.isEnabled = true
-                findViewById<View>(android.R.id.content).setBackgroundColor(Color.WHITE)
                 lineChart.setBackgroundColor(Color.parseColor("#E0F7FA"))
-
-                setupSpeedChartAppearance()
-                populateSpeedData()
-                Log.d("ExerciseSetActivity", "UI updated for WORKING state. Exercise: ${currentExercise.name}, Set: ${ExerciseManager.getCurrentSetInfo()}")
+                setupChartDataAndDisplay()
+                appendToDebugLog("UI for WORKING. Set: ${ExerciseManager.getCurrentSetInfo()}")
             }
             SessionState.RESTING -> {
-                // 이 부분은 skipButton 클릭 시 RestTimerActivity로 바로 넘어가므로,
-                // RestTimerActivity에서 돌아와 onResume -> refreshUi가 호출될 때까지는 실행되지 않음.
-                // 만약 RestTimerActivity에서 돌아왔는데 여전히 RESTING 상태라면 (예: 사용자가 뒤로가기) 이 UI가 보임.
-                setInfoTextView.text = "휴식 중..." // 또는 이전 운동 정보 표시
-                skipButton.text = "휴식 건너뛰기" // 또는 다른 적절한 텍스트
-                skipButton.isEnabled = true // 사용자가 원하면 여기서도 휴식 스킵 가능하게 할지 결정
+                setInfoTextView.text = "휴식 중... (다음 운동: ${currentExercise.name})" // 휴식 정보는 setInfoTextView에
+                skipButton.text = "휴식 건너뛰기"
+                skipButton.isEnabled = true
                 findViewById<View>(android.R.id.content).setBackgroundColor(Color.LTGRAY)
-                lineChart.clear()
-                lineChart.invalidate()
-                lineChart.setBackgroundColor(Color.parseColor("#EEEEEE"))
-
-                Log.d("ExerciseSetActivity", "UI updated for RESTING state (likely after returning from RestTimer or if skip logic changes).")
-                // 일반적으로 RestTimerActivity로 인해 이 코드가 직접적으로 사용자에게 보이진 않음.
-                // 하지만 만약 RestTimerActivity 없이 휴식을 직접 관리한다면 이 UI가 중요해짐.
-                // 현재 로직에서는 RestTimerActivity를 사용하므로, 이 블록이 실행되는 경우는
-                // RestTimerActivity에서 돌아왔는데, 어떤 이유로 ExerciseManager.finishRest()가 호출되지 않아
-                // 여전히 RESTING 상태일 때 입니다. 이 경우를 대비해 UI를 설정합니다.
+                lineChart.visibility = View.GONE
+                appendToDebugLog("UI for RESTING.")
             }
             else -> {
-                Log.w("ExerciseSetActivity", "refreshUi called with unexpected state: $currentState")
+                appendToDebugLog("refreshUi with unexpected state: $currentState")
             }
         }
     }
 
+    override fun onDataReceived(data: String, packetSize: Int) { // <<< packetSize 파라미터 추가
+        // 이제 packetSize도 함께 로그에 표시
+        appendToDebugLog("DataRecv (Size:$packetSize): '$data' | St: ${ExerciseManager.state}")
+        try {
+            val jsonObject = JSONObject(data)
+            val time = jsonObject.optDouble("time", -1.0).toFloat()
+            val count = jsonObject.optInt("count", -1)
+
+            appendToDebugLog("Parsed: t=$time, c=$count")
+
+            if (count == -1 || time == -1.0f) {
+                appendToDebugLog("InvalidData: c=$count, t=$time | From (Size:$packetSize): '$data'")
+                return
+            }
+
+            runOnUiThread {
+                currentRepsTextView.text = count.toString()
+                if (ExerciseManager.state == SessionState.WORKING) {
+                    val newEntry = Entry(count.toFloat(), time)
+                    realTimeDataSet.addEntry(newEntry)
+                    lineChart.data.notifyDataChanged()
+                    lineChart.notifyDataSetChanged()
+                    lineChart.invalidate()
+                    val currentEx = ExerciseManager.getCurrentExercise()
+                    if (currentEx != null && count > currentEx.reps) {
+                        appendToDebugLog("Count ($count) > Target (${currentEx.reps})")
+                    }
+                } else {
+                    appendToDebugLog("NoGraphUpdate (Size:$packetSize): ${ExerciseManager.state} | Reps: $count")
+                }
+            }
+        } catch (e: Exception) {
+            appendToDebugLog("ERROR (Size:$packetSize): ${e.message} | Data: '$data'")
+            Log.e(TAG, "Error in onDataReceived (Size:$packetSize, Data:'$data')", e) // Logcat에도 상세 정보 남김
+        }
+    }
+
+    // BleConnectionManager.BleDataListener 인터페이스 구현
+    override fun onDebugMessage(message: String) {
+        appendToDebugLog("BLE_MAN: $message") // BleConnectionManager에서 오는 디버그 메시지
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        Log.d("ExerciseSetActivity", "onDestroy called. Current ExerciseManager state: ${ExerciseManager.state}")
+        Log.d(TAG, "onDestroy CALLED. State=${ExerciseManager.state}")
+        Toast.makeText(this, "onDestroy: State=${ExerciseManager.state}", Toast.LENGTH_SHORT).show()
     }
 }
