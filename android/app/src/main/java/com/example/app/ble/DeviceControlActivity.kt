@@ -268,7 +268,7 @@ class DeviceControlActivity : AppCompatActivity(), BleConnectionManager.BleConne
             updateConnectionState(BluetoothProfile.STATE_CONNECTED)
 
             if (ExerciseManager.state == SessionState.IDLE && ExerciseManager.getCurrentExercise() != null) {
-                infoTextView.text = "이전 운동 완료. 다음 'START_REQ' 대기 중..."
+                infoTextView.text = "디바이스의 시작 신호 대기 중 ..."
             } else if (ExerciseManager.state == SessionState.FINISHED) {
                 infoTextView.text = "모든 운동 완료!"
                 Log.i(TAG, "onResume: All exercises finished. Disconnecting BLE if connected.")
