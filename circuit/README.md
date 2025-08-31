@@ -39,3 +39,25 @@
 
 ![alt text](./docs_images/3D_ALL.png)
 * 모든 부품을 포함한 3D 모델 분해도
+
+## 기기 형상
+
+### 8/26
+![alt text](./docs_images/uppercase_broke.jpg)
+* `상단 케이스`의 볼트 체결부가 부러지는 문제 발생
+* 부저의 소리가 작아서 운동 왕복시 소리가 잘 들리지 않음
+
+부저 교체 및 상판 두께를 2mm 증가
+<br>
+
+### 조립 완성품
+ ![alt text](./docs_images/device_top.jpg)
+기기 상단
+- `리셋 스위치` 구멍, 기기 전원과 BLE 연결 확인용 인디케이터, 시작 스위치
+ ![alt text](./docs_images/device_front.jpg)
+기기 정면
+- `Arduino NANO`의 포트 구멍, 배터리 연결부, 기기 전원 `토글 스위치`, 기울임 감지 LED
+
+ ![alt text](./docs_images/device_bottom.jpg)
+기기 하단
+- 운동기기에서 미끄러지지 않도록 육각형 패턴의 미끄럼 방지 패드 부착
