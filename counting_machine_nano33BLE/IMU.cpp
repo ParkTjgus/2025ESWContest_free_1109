@@ -1,34 +1,52 @@
 #include <Arduino.h>
 #include <math.h>
-#include "counting_machine.h"
+#include "Arduino_BMI270_BMM150.h"
 
-#ifndef RETURN_SENSOR_FRAME     // 보드좌표계 → 센서(칩)좌표계로 역매핑할지 선택
-#define RETURN_SENSOR_FRAME 1   // 1: 센서원축(chip frame)로 되돌려 반환, 0: 보드좌표계 그대로
+#include "IMU.h"
+
+#ifndef RETURN_SENSOR_FRAME         // 보드좌표계 → 센서(칩)좌표계로 역매핑할지 선택
+#define RETURN_SENSOR_FRAME 1       // 1: 센서원축(chip frame)로 되돌려 반환, 0: 보드좌표계 그대로
 #endif
+
 
 //
 // undoNano33BLEMap: board/ x=-y_s, y=-x_s, z= z_s  → sensor/ x_s=-y_b, y_s=-x_b, z_s=z_b
 //
-static inline void undoNano33BLEMapAccel(float& x, float& y, float& z) {
+static void undoNano33BLEMapAccel(float& x, float& y, float& z) {
   float xb = x, yb = y; (void)z;
   x = -yb;
   y = -xb;
   // z unchanged
 }
 
-static inline void undoNano33BLEMapGyro(float& x, float& y, float& z) {
+static void undoNano33BLEMapGyro(float& x, float& y, float& z) {
   float xb = x, yb = y; (void)z;
   x = -yb;
   y = -xb;
   // z unchanged
 }
+
+
+
+//
+// vectorMagnitude3D: 3D 벡터의 크기 / 크기제곱을 반환
+//
+static float vectorMagnitudeSq3D(float x, float y, float z) {
+  return x*x + y*y + z*z;
+}
+
+static float vectorMagnitude3D(float x, float y, float z) {
+  return sqrtf(vectorMagnitudeSq3D(x, y, z));
+}
+
+
 
 //
 // IMU_getMotion6: 가속도 3축, 자이로 3축 데이터 획득
 //
-float ax, ay, az, gx, gy, gz;
+static float ax, ay, az, gx, gy, gz;
 
-bool IMU_getMotion6(float& outAx, float& outAy, float& outAz, 
+static bool IMU_getMotion6(float& outAx, float& outAy, float& outAz, 
                     float& outGx, float& outGy, float& outGz) {                   
   if (IMU.accelerationAvailable() && IMU.gyroscopeAvailable()) {
     IMU.readAcceleration(outAx, outAy, outAz);
@@ -47,18 +65,18 @@ bool IMU_getMotion6(float& outAx, float& outAy, float& outAz,
   return false;
 }
 
-bool IMU_getMotion6() {
+static bool IMU_getMotion6() {
   return IMU_getMotion6(ax, ay, az, gx, gy, gz);
 }
 
 
 
 //
-// updateBaseline: 지정한 샘플 수(N)로부터 기준 오프셋을 계산
+// IMU_updateOffse: 지정한 샘플 수(N)로부터 기준 오프셋을 계산
 //
-float axOff, ayOff, azOff, gxOff, gyOff, gzOff;
+static float axOff, ayOff, azOff, gxOff, gyOff, gzOff;
 
-void updateBaseline(int N) {
+static void IMU_updateOffset(int N) {
   float axSum, aySum, azSum, gxSum, gySum, gzSum;
   axSum = aySum = azSum = gxSum = gySum = gzSum = 0.0f;
   int collected = 0;
@@ -85,36 +103,48 @@ void updateBaseline(int N) {
 
 
 
+// ===== 전역 함수 =============================================================================================================
+
+
+
 //
-// vectorMagnitude3D: 3D 벡터의 크기/크기제곱을 반환
+// IMU_setup: IMU 연결 확인 및 Offset 업데이트
 //
-static inline float vectorMagnitudeSq3D(float x, float y, float z) {
-  return x*x + y*y + z*z;
+void IMU_setup() {
+  if (!IMU.begin()) {
+    Serial.println("Failed to initialize IMU!"); while (1);
+  } Serial.println("Succeed to initialize IMU!");
+
+  // Serial.print("Accel sample rate = "); Serial.print(IMU.accelerationSampleRate()); Serial.println("Hz");
+  // Serial.print("Gyro  sample rate = "); Serial.print(IMU.gyroscopeSampleRate());    Serial.println("Hz");
+
+  // 기준 오프셋 업데이트
+  Serial.println("IMU stabilizing...");
+  // IMU_updateOffset(300);
+  axOff =  0.00553f; ayOff = -0.02495f; azOff =  0.01312f; 
+  gxOff = -0.09344f; gyOff =  0.06549f; gzOff = -0.10291f;
+  Serial.println("IMU is ready!");
 }
 
-static inline float vectorMagnitude3D(float x, float y, float z) {
-  return sqrtf(vectorMagnitudeSq3D(x, y, z));
-}
-
 
 
 //
-// readSensorData: raw 데이터를 읽어 Z축 가속도를 계산
+// IMU_readData: raw 데이터를 읽어 가속도 SVM(signal vector magnitude), X축 각도 계산
 //
 //float axG, ayG, azG, gxR, gyR, gzR;
 float SVM, AngleX;
 
-void readSensorData(float dt) {
+void IMU_readData(float dt) {
   if (!IMU_getMotion6()) return;
 
   float axG, ayG, azG, gxR, gyR, gzR;
   axG = (ax - axOff); ayG = (ay - ayOff); azG = (az - azOff);
   gxR = (gx - gxOff); gyR = (gy - gyOff); gzR = (gz - gzOff);
 
-  // 횟수 측정용
+  // 횟수 측정
   SVM = (vectorMagnitude3D(axG, ayG, azG) - 1.0f) * 981.0f; //cm단위
 
-  // 기울기 측정용
+  // 기울기 측정
   if (vectorMagnitudeSq3D(axG, ayG, azG) > 1e-9f) {
     float inv = 1.0f / vectorMagnitude3D(axG, ayG, azG);
     axG *= inv; ayG *= inv; azG *= inv; // 단위벡터 정규화
