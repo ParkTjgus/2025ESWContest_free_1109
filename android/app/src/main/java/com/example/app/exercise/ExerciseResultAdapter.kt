@@ -108,7 +108,7 @@ class ExerciseResultAdapter(
         lineDataSet.setCircleColor(lineDataSet.color)
         lineDataSet.circleRadius = 3f
         lineDataSet.setDrawCircleHole(false)
-        lineDataSet.mode = LineDataSet.Mode.CUBIC_BEZIER
+        lineDataSet.mode = LineDataSet.Mode.LINEAR
         lineDataSet.setDrawValues(false) // 차트 위 값 텍스트 숨김 (선택)
 
         val lineData = LineData(lineDataSet)

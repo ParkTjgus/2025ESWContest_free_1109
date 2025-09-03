@@ -216,13 +216,12 @@ class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataLis
         realTimeDataSet.lineWidth = 2f
         realTimeDataSet.circleRadius = 3f
         realTimeDataSet.setDrawValues(false)
-        // realTimeDataSet.mode = LineDataSet.Mode.CUBIC_BEZIER // 곡선 모드 잠시 제거
+        realTimeDataSet.mode = LineDataSet.Mode.LINEAR // 곡선 모드 잠시 제거
         setupSpeedChartAppearance()
     }
 
     private fun setupSpeedChartAppearance() {
-        appendToDebugLog("setupSpeedChartAppearance CALLED. Applying very simple settings.")
-        // lineChart.clear() // 데이터 설정 전에 호출될 것이므로 여기서는 생략 가능
+        appendToDebugLog("setupSpeedChartAppearance CALLED. Y축 시작점 0으로 재설정.") // 로그 메시지 수정
         lineChart.description.isEnabled = false
         lineChart.setTouchEnabled(true)
         lineChart.isDragEnabled = true
@@ -231,20 +230,24 @@ class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataLis
         lineChart.isScaleYEnabled = true    // Y축 스케일(확대/축소)은 가능하도록 명시 (유지)
         lineChart.setPinchZoom(false)       // X축 스케일이 비활성화되었으므로 핀치줌도 false (유지)
 
-        // X축 기본 설정
+        // X축(가로축, 횟수) 기본 설정
         val xAxis = lineChart.xAxis
         xAxis.position = XAxis.XAxisPosition.BOTTOM
-        // xAxis.granularity, xAxis.axisMinimum 등 세부 설정 제거
+        xAxis.granularity = 1f // X축은 횟수이므로 1단위로 명확히 표시
+        xAxis.axisMinimum = 1f // X축도 0부터 시작 (실제 횟수는 1부터 시작하지만, 축의 시작은 0으로)
 
-        // Y축(왼쪽) 기본 설정 - 대부분 자동
-        // val leftAxis = lineChart.axisLeft
-        // leftAxis.axisMinimum 등 세부 설정 제거
+        // Y축(세로축, 시간) 기본 설정
+        val leftAxis = lineChart.axisLeft
+        leftAxis.axisMinimum = 0f       // Y축(시간)은 항상 0부터 시작하도록 명시
+        leftAxis.resetAxisMaximum()
 
         // Y축(오른쪽) 비활성화
         lineChart.axisRight.isEnabled = false
         lineChart.legend.isEnabled = true // 범례는 표시
+
         // invalidate()는 setupChartDataAndDisplay에서 데이터 설정 후 호출됨
     }
+
 
     private fun setupChartDataAndDisplay() {
         val currentExercise = ExerciseManager.getCurrentExercise() ?: run {
@@ -347,16 +350,16 @@ class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataLis
 
         when (currentState) {
             SessionState.WORKING -> {
-                internalRepsCount = 0 
+                internalRepsCount = 0
                 appendToDebugLog("refreshUi: WORKING state. internalRepsCount reset to 0.")
-                setupChartDataAndDisplay() 
+                setupChartDataAndDisplay()
 
                 currentRepsTextView.visibility = View.VISIBLE
                 targetRepsTextView.visibility = View.VISIBLE
                 lineChart.visibility = View.VISIBLE
 
                 setInfoTextView.text = ExerciseManager.getCurrentSetInfo()
-                currentRepsTextView.text = internalRepsCount.toString() 
+                currentRepsTextView.text = internalRepsCount.toString()
                 targetRepsTextView.text = currentExercise.reps.toString()
                 skipButton.text = "세트 완료"
                 skipButton.isEnabled = true
@@ -366,10 +369,10 @@ class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataLis
             }
             SessionState.RESTING -> {
                 appendToDebugLog("refreshUi: State is RESTING. This is unexpected here. Attempting to advance state.")
-                ExerciseManager.finishRest() 
-                if(ExerciseManager.state == SessionState.WORKING) { 
-                    refreshUi() 
-                } else { 
+                ExerciseManager.finishRest()
+                if(ExerciseManager.state == SessionState.WORKING) {
+                    refreshUi()
+                } else {
                     setInfoTextView.text = "휴식 완료 후 다음 운동 준비 중... (오류 가능성)"
                     skipButton.text = "다음 운동/세트 시작"
                     skipButton.isEnabled = true
@@ -383,6 +386,10 @@ class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataLis
             }
         }
     }
+
+    // In ExerciseSetActivity.kt
+
+// ... (다른 클래스 멤버 및 함수들은 이전과 동일하다고 가정)
 
     override fun onDataReceived(data: String, packetSize: Int) {
         val rawCountFromDevice: Int
@@ -403,8 +410,9 @@ class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataLis
                 return
             }
 
+            // 중복 데이터 필터링 (유지)
             if (time == lastReceivedTime && rawCountFromDevice == lastReceivedDeviceCount) {
-                if ((currentTimestamp - lastReceiveTimestamp) < 500) {
+                if ((currentTimestamp - lastReceiveTimestamp) < 500) { // 500ms 이내 중복 필터링
                     appendToDebugLog("Duplicate data filtered: t=$time, dev_c=$rawCountFromDevice, dT=${currentTimestamp - lastReceiveTimestamp}ms. Ignoring.")
                     return
                 }
@@ -421,22 +429,54 @@ class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataLis
                     appendToDebugLog("WORKING: internalRepsCount incremented to $internalRepsCount. time=$time")
 
                     val newEntry = Entry(internalRepsCount.toFloat(), time)
-                    realTimeEntries.add(newEntry)
-
+                    realTimeEntries.add(newEntry) // ExerciseManager 전달용 데이터 리스트에 추가
+// onDataReceived 내 runOnUiThread 블록 중 일부...
                     if (::realTimeDataSet.isInitialized && lineChart.data != null) {
-                        lineChart.data.notifyDataChanged() 
-                        lineChart.notifyDataSetChanged()   
-                        lineChart.invalidate()             
-                        appendToDebugLog("Chart updated. X(InternalRep)=${newEntry.x}, Y(Time)=${newEntry.y}. DataSetSize=${realTimeDataSet.entryCount}")
-                    } else {
-                        appendToDebugLog("WARN: realTimeDataSet not initialized or lineChart.data is null. Cannot update chart.")
-                    }
+                        realTimeDataSet.addEntryOrdered(newEntry)
 
+                        lineChart.data.notifyDataChanged() // <--- 추가된 라인
+                        lineChart.notifyDataSetChanged() // 데이터셋 변경 알림
+
+                        // Y축 범위 즉시 업데이트
+                        val yAxis = lineChart.axisLeft
+                        yAxis.axisMinimum = 0f // 최소값은 항상 0
+
+                        var currentMaxY = realTimeDataSet.yMax // 현재 데이터셋의 최대 Y값
+                        val currentExercise = ExerciseManager.getCurrentExercise()
+                        val targetSpeedValue = currentExercise?.roundTripTime?.toFloat() ?: 0f
+
+                        // 목표 속도선도 보이도록 최대값 조정 (선택 사항)
+                        if (targetSpeedValue > currentMaxY) {
+                            currentMaxY = targetSpeedValue
+                        }
+
+                        if (currentMaxY > 0f) {
+                            yAxis.axisMaximum = currentMaxY * 1.1f // 10% 여유 공간
+                        } else {
+                            yAxis.axisMaximum = 5f // 데이터가 없거나 모두 0일 경우 기본 최대값 (예: 5초)
+                        }
+
+                        lineChart.invalidate() // 변경된 축 범위 및 데이터로 차트 다시 그리기
+                        appendToDebugLog("Chart updated. X=${newEntry.x}, Y=${newEntry.y}. YAxis ManualMax: ${yAxis.axisMaximum}") // 로그 이름 변경
+
+                    } else {
+                        appendToDebugLog("WARN: realTimeDataSet not initialized or lineChart.data is null.")
+                    }
+// ...
+
+
+                    // 목표 횟수 도달 시 자동 세트 완료 로직 (유지)
                     val currentEx = ExerciseManager.getCurrentExercise()
                     if (currentEx != null && internalRepsCount >= currentEx.reps) {
                         appendToDebugLog("Target reps reached ($internalRepsCount/${currentEx.reps}) for ${currentEx.name}. Auto-performing 'Set Complete'.")
                         if (skipButton.isEnabled) {
-                            skipButton.performClick()
+                            // skipButton.performClick()
+                            // 명시적으로 세트 완료 처리 함수를 호출하는 것이 좋을 수 있습니다.
+                            // 예: handleSkipOrComplete() 또는 유사한 함수
+                            // 현재 skipButton.performClick()이 UI 스레드에서 문제를 일으키지 않는다면 유지 가능
+                            // 하지만 performClick()은 UI 상호작용을 모방하는 것이므로, 로직 직접 호출이 더 안정적일 수 있음
+                            // 여기서는 일단 기존 로직을 최대한 유지하겠습니다. 문제가 되면 이 부분을 검토합니다.
+                            skipButton.performClick() // 기존 코드 유지
                         } else {
                             appendToDebugLog("WARN: Target reps reached, but skipButton is not enabled. Check state logic.")
                         }
@@ -450,6 +490,9 @@ class ExerciseSetActivity : AppCompatActivity(), BleConnectionManager.BleDataLis
             Log.e(TAG, "Error in onDataReceived (Size:$packetSize, Data:'$data')", e)
         }
     }
+
+// ... (initializeChartComponents, setupSpeedChartAppearance, setupChartDataAndDisplay 등 나머지 함수는 이전과 동일)
+
 
     override fun onDebugMessage(message: String) {
         appendToDebugLog("BLE_MAN: $message")
