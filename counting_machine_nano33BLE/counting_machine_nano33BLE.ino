@@ -16,7 +16,6 @@ void processLoop();
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial) delay(10);
   
   pinMode(LED_PIN_PWR, OUTPUT);
   pinMode(LED_PIN_BLE, OUTPUT);
@@ -36,7 +35,7 @@ void setup() {
 
 void loop() {
   BLE_run(processLoop);
-  //processLoop();
+  // processLoop();
 }
 
 
@@ -54,7 +53,7 @@ void processLoop() {
   IMU_readData(dt);
 
   // 기울기 피드백
-  const float THRESH_ANGLE = 10.0f;
+  const float THRESH_ANGLE = 5.0f;
   digitalWrite(LED_PIN_L, (AngleX >  THRESH_ANGLE) ? HIGH : LOW);
   digitalWrite(LED_PIN_R, (AngleX < -THRESH_ANGLE) ? HIGH : LOW);
 
@@ -73,28 +72,6 @@ void processLoop() {
 
   // 다음 루프를 위한 이전 값 업데이트
   updatePreviousState();
-  
-  static uint8_t cnt_loop = 0;
-  if (++cnt_loop < 1) return;
-  cnt_loop = 0;
-
-  // 디버그 출력 (Serial 모니터)
-  // Serial.print(AngleX, 5); Serial.print("      ");
-
-  // Serial.print(SVM, 5); Serial.print("      ");
-  Serial.print(lowPassSVM, 5); Serial.print("      ");
-  // Serial.print(highPassVelocity, 5); Serial.print("      ");
-  // Serial.print(lowPassVelocity, 5); Serial.print("      ");
-  Serial.print(position, 5); Serial.print("      ");
-
-  Serial.print(repCount); Serial.print("      ");
-  Serial.print(oneRepMaxCount); Serial.print("      ");
-  Serial.print(averageRate); Serial.print("      ");
-  Serial.print(currentRate); Serial.print("      ");
-
-  // Serial.print(userSetTime); Serial.print("      ");
-  Serial.print(measuredTime); Serial.print("      ");
-  Serial.println();
 }
 
 
