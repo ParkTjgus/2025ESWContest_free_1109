@@ -34,6 +34,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.App">
         <activity
+            android:name=".exercise.ExerciseResultActivity"
+            android:exported="false" />
+        <activity
             android:name=".ble.DeviceControlActivity"
             android:exported="false" />
         <activity
@@ -41,8 +44,7 @@
             android:exported="false" />
         <activity
             android:name=".TestMainActivity"
-            android:exported="false">
-        </activity>
+            android:exported="false"></activity>
         <activity
             android:name=".exercise.DailyPlanActivity"
             android:exported="true">
