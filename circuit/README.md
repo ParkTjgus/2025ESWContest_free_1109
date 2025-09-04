@@ -53,10 +53,11 @@
  ![alt text](./docs_images/device_top.jpg)
 기기 상단
 - `리셋 스위치` 구멍, 기기 전원과 BLE 연결 확인용 인디케이터, 시작 스위치
+
  ![alt text](./docs_images/device_front.jpg)
 기기 정면
 - `Arduino NANO`의 포트 구멍, 배터리 연결부, 기기 전원 `토글 스위치`, 기울임 감지 LED
 
- ![alt text](./docs_images/device_bottom.jpg)
+ ![alt text](./docs_images/device_bottom.jpg)   
 기기 하단
 - 운동기기에서 미끄러지지 않도록 육각형 패턴의 미끄럼 방지 패드 부착
