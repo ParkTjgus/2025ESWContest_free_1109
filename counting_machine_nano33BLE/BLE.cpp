@@ -96,7 +96,7 @@ static void parseCommand(char *buf) {
 //
 // sendStartReq_: START_REQ 공통 전송 루틴(내부 전용)
 //
-static unsigned long lastReqMs = 0; // 핸드셰이크 타임아웃 기준
+static unsigned long lastReqMs = 0;
 
 static inline void sendStartReq_() {
   const char* req = "START_REQ";
@@ -179,7 +179,7 @@ static void notifyJsonAfterCount() {
 
 
 //
-// BLE_setup: BLE 초기화 및 서비스/특성 등록 후 광고 시작
+// BLE_setup: BLE 초기화 및 서비스/특성 등록 후 advertise 시작
 //
 void BLE_setup() {
   if (!BLE.begin()) {
@@ -216,9 +216,9 @@ void BLE_run(WorkLoopOnceFn workOnce) {
       digitalWrite(LED_PIN_BLE, ledState);
     }
     return;
-  } // 미연결: 광고 유지 & LED 점멸
+  } // 미연결 상태일 때 advertise 유지 & LED 점멸
 
-  // ===== 연결 상태일 때만 수행 =====
+  // 연결 상태일 때만 수행
   if (cmdChar.written()) {
     char buf[32];
     int n = cmdChar.readValue((uint8_t*)buf, sizeof(buf) - 1);

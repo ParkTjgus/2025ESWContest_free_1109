@@ -37,7 +37,7 @@ void detectRep();
 
 
 //
-// measureUserSpeed: 횟수 당 사용자 운동시간 측정
+// measureUserSpeed: 횟수 당 사용자 운동시간 측정 - 첫 1RM: 반사이클에서 측정 시작, 이후: 완전 사이클 시작점에서 측정 시작
 //
 extern float measuredTime;                              // 사용자의 한 동작 측정 시간
 extern uint16_t userSetTime;                            // 사용자의 한 동작 설정 시간

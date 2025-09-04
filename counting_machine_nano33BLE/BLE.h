@@ -1,12 +1,12 @@
 #pragma once
 
 
-typedef void (*WorkLoopOnceFn)(); // 알고리즘 1회 처리 콜백을 위한 함수 포인터 타입 정의
+typedef void (*WorkLoopOnceFn)(); // 함수 포인터 타입 정의
 
 
 
 //
-// BLE_setup: BLE 초기화 및 서비스/특성 등록 후 광고 시작
+// BLE_setup: BLE 초기화 및 서비스/특성 등록 후 advertise 시작
 //
 void BLE_setup();
 

@@ -120,9 +120,9 @@ void IMU_setup() {
 
   // 기준 오프셋 업데이트
   Serial.println("IMU stabilizing...");
-  // IMU_updateOffset(300);
-  axOff =  0.00553f; ayOff = -0.02495f; azOff =  0.01312f; 
-  gxOff = -0.09344f; gyOff =  0.06549f; gzOff = -0.10291f;
+  IMU_updateOffset(500);
+  // axOff =  0.00553f; ayOff = -0.02495f; azOff =  0.01312f; 
+  // gxOff = -0.09344f; gyOff =  0.06549f; gzOff = -0.10291f;
   Serial.println("IMU is ready!");
 }
 
@@ -131,7 +131,6 @@ void IMU_setup() {
 //
 // IMU_readData: raw 데이터를 읽어 가속도 SVM(signal vector magnitude), X축 각도 계산
 //
-//float axG, ayG, azG, gxR, gyR, gzR;
 float SVM, AngleX;
 
 void IMU_readData(float dt) {
@@ -141,8 +140,8 @@ void IMU_readData(float dt) {
   axG = (ax - axOff); ayG = (ay - ayOff); azG = (az - azOff);
   gxR = (gx - gxOff); gyR = (gy - gyOff); gzR = (gz - gzOff);
 
-  // 횟수 측정
-  SVM = (vectorMagnitude3D(axG, ayG, azG) - 1.0f) * 981.0f; //cm단위
+  // SVM(signal vector magnitude) 측정
+  SVM = (vectorMagnitude3D(axG, ayG, azG) - 1.0f) * 981.0f; //cm/s^2
 
   // 기울기 측정
   if (vectorMagnitudeSq3D(axG, ayG, azG) > 1e-9f) {
@@ -159,17 +158,3 @@ void IMU_readData(float dt) {
 }
 
 
-
-// Serial.print(axG, 5); Serial.print("      ");
-// Serial.print(ayG, 5); Serial.print("      ");
-// Serial.print(azG, 5); Serial.print("      ");
-// Serial.print(gxR, 5); Serial.print("      ");
-// Serial.print(gyR, 5); Serial.print("      ");
-// Serial.print(gzR, 5); Serial.print("      ");
-// Serial.println();
-
-// Serial.print("preNorm a = ");
-// Serial.print(axG, 6); Serial.print(", ");
-// Serial.print(ayG, 6); Serial.print(", ");
-// Serial.print(azG, 6); Serial.print("  |a|=");
-// Serial.println(vectorMagnitude3D(axG, ayG, azG), 6);
